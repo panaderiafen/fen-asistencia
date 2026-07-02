@@ -1287,6 +1287,13 @@ const PDF = (() => {
 <script src="config.js"></script>
 <script>
 (async () => {
+  await new Promise(resolve => {
+    if (typeof google !== 'undefined') { resolve(); return; }
+    const interval = setInterval(() => {
+      if (typeof google !== 'undefined') { clearInterval(interval); resolve(); }
+    }, 100);
+  });
+
   Auth.renderButton('google-btn');
   const { user, profile } = await Auth.init().catch(() => ({}));
   if (!user) return;
