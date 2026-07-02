@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>fën · registro de asistencia</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+/* style.css — fën asistencia */
+
+:root {
+  --charcoal:   #28231e;
+  --charcoal-2: #3d3630;
+  --bone:       #f5edd7;
+  --bone-2:     #ede0c4;
+  --ember:      #ba7517;
+  --ember-light:#faeeda;
+  --ember-dark: #854f0b;
+  --warning:    #b43c1d;
+  --text:       #28231e;
+  --text-muted: #7a6f65;
+  --border:     #d8cdb8;
+  --surface:    #fdf8f0;
+  --white:      #ffffff;
+  --radius:     10px;
+  --radius-sm:  6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--surface);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ── Pantallas ─────────────────────────────────────────── */
+.screen { min-height: 100vh; }
+
+.screen-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--charcoal);
+}
+
+.login-card {
+  background: var(--bone);
+  border-radius: 16px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  width: 100%;
+  max-width: 320px;
+}
+
+.brand {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--charcoal);
+  font-family: Georgia, serif;
+}
+
+.brand-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  margin-bottom: 1.5rem;
+  letter-spacing: 0.5px;
+}
+
+.login-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.app-header {
+  background: var(--charcoal);
+  color: var(--bone);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0.75rem 1.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand-sm {
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--bone);
+  flex: 1;
+}
+
+.admin-badge {
+  font-family: -apple-system, sans-serif;
+  font-size: 11px;
+  background: var(--ember);
+  color: var(--bone);
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-weight: 500;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--bone-2);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ember);
+}
+
+.header-right { display: flex; align-items: center; gap: 8px; }
+
+/* ── Botones ────────────────────────────────────────────── */
+button, a.btn-primary {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--bone-2);
+  border: 1px solid rgba(245,237,215,0.25);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+.btn-sm { font-size: 12px; padding: 4px 10px; }
+
+.btn-primary {
+  background: var(--ember);
+  color: var(--bone);
+  padding: 10px 20px;
+  font-weight: 500;
+}
+.btn-primary:hover { background: var(--ember-dark); }
+
+.btn-secondary {
+  background: var(--bone-2);
+  color: var(--charcoal);
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.btn-secondary:hover { background: var(--bone); }
+
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:active:not(:disabled) { transform: scale(0.98); }
+
+/* ── Reloj ──────────────────────────────────────────────── */
+.clock-section {
+  text-align: center;
+  padding: 2rem 1rem 1.5rem;
+  background: var(--charcoal);
+  color: var(--bone);
+  border-bottom: 3px solid var(--ember);
+}
+
+.clock {
+  font-size: 52px;
+  font-weight: 300;
+  letter-spacing: 3px;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Fira Mono', monospace;
+  color: var(--bone);
+}
+
+.clock-date {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  color: rgba(245,237,215,0.6);
+  text-transform: lowercase;
+}
+
+/* ── Contenido principal ────────────────────────────────── */
+#screen-app > *:not(.app-header):not(.clock-section):not(.admin-tabs) {
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+/* ── Estado turno ───────────────────────────────────────── */
+.shift-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ember-light);
+  border: 1px solid var(--ember);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 1.25rem auto;
+  font-size: 14px;
+  max-width: 560px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.status-dot.active {
+  background: #2d8a4e;
+  box-shadow: 0 0 0 3px rgba(45,138,78,0.2);
+}
+
+/* ── Selector jornada ───────────────────────────────────── */
+.jornada-selector {
+  max-width: 560px;
+  margin: 1rem auto 0.75rem;
+}
+
+.label-sm {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.4px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.radio-group {
+  display: flex;
+  gap: 8px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  transition: all 0.15s;
+}
+
+.radio-option input[type="radio"] { display: none; }
+.radio-option:has(input:checked) {
+  background: var(--charcoal);
+  color: var(--bone);
+  border-color: var(--charcoal);
+}
+.radio-feriado:has(input:checked) {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: white;
+}
+
+/* ── Botones fichar ─────────────────────────────────────── */
+.fichar-btns {
+  max-width: 560px;
+  margin: 0.75rem auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-entrada {
+  background: var(--charcoal);
+  color: var(--bone);
+  padding: 1rem;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--radius);
+  height: 56px;
+}
+.btn-entrada:not(:disabled):hover { background: var(--charcoal-2); }
+
+.btn-salida {
+  background: var(--white);
+  color: var(--charcoal);
+  border: 1.5px solid var(--border);
+  padding: 1rem;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--radius);
+  height: 56px;
+}
+.btn-salida:not(:disabled):hover { background: var(--bone-2); }
+
+/* ── Alerta extras ──────────────────────────────────────── */
+.extras-alert {
+  max-width: 560px;
+  margin: 0.5rem auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff3cd;
+  border: 1px solid #e6ac00;
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 1rem;
+  font-size: 13px;
+  color: #7a5800;
+}
+
+.extras-icon { font-size: 16px; }
+
+/* ── Registros recientes ────────────────────────────────── */
+.recent-section, .bhe-summary {
+  max-width: 560px;
+  margin: 1.5rem auto;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.record-feriado { background: rgba(180,60,29,0.04); }
+.record-date { font-weight: 500; min-width: 90px; }
+.record-times { color: var(--text-muted); flex: 1; }
+.record-hours { font-weight: 500; color: var(--ember-dark); margin-left: auto; }
+
+.badge-feriado {
+  font-size: 11px;
+  background: var(--warning);
+  color: white;
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+
+/* ── Métricas ───────────────────────────────────────────── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.metric-grid.mini { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+
+.metric-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+
+.metric-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.metric-value { font-size: 22px; font-weight: 600; color: var(--charcoal); }
+.metric-value.text-warning { color: var(--warning); }
+
+/* ── Admin tabs ─────────────────────────────────────────── */
+.admin-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--white);
+  padding: 0 1.25rem;
+  overflow-x: auto;
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.85rem 1rem;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--ember-dark); border-bottom-color: var(--ember); font-weight: 500; }
+
+.tab-content { padding: 1.5rem 1.25rem; max-width: 800px; margin: 0 auto; }
+
+/* ── Filtros admin ──────────────────────────────────────── */
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  align-items: center;
+}
+
+.filter-row select, .filter-row input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: var(--white);
+  color: var(--text);
+  font-family: inherit;
+}
+
+/* ── Bloques por trabajador ─────────────────────────────── */
+.worker-block {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.worker-block-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.worker-name { font-size: 17px; font-weight: 600; color: var(--charcoal); }
+
+.badge-extra {
+  font-size: 12px;
+  background: #fff3cd;
+  color: #7a5800;
+  border: 1px solid #e6ac00;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+.badge-ok {
+  font-size: 12px;
+  background: #d4edda;
+  color: #155724;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+.badge-tipo {
+  font-size: 11px;
+  background: var(--ember-light);
+  color: var(--ember-dark);
+  border: 1px solid var(--ember);
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* ── Tabla detalle ──────────────────────────────────────── */
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 1rem;
+}
+
+.detail-table th {
+  text-align: left;
+  padding: 7px 8px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.detail-table .row-feriado td { color: var(--warning); }
+
+/* ── PDF actions ────────────────────────────────────────── */
+.pdf-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* ── Varios ─────────────────────────────────────────────── */
+.empty-state { color: var(--text-muted); font-size: 14px; padding: 1rem 0; }
+.error-msg { color: var(--warning); font-size: 13px; margin-top: 1rem; }
+.hint-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+/* ── Mobile ─────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .clock { font-size: 38px; }
+  .fichar-btns { grid-template-columns: 1fr; }
+  .metric-value { font-size: 18px; }
+  .filter-row { flex-direction: column; }
+  .filter-row select, .filter-row input { width: 100%; }
+}
+  </style>
+</head>
+<body>
+
+<div id="screen-login" class="screen screen-login">
+  <div class="login-card">
+    <div class="brand">fën</div>
+    <p class="brand-sub">registro de asistencia</p>
+    <p class="login-hint">entra con tu cuenta de Google para fichar tu jornada</p>
+    <div id="google-btn"></div>
+    <p id="login-error" class="error-msg" style="display:none;"></p>
+  </div>
+</div>
+
+<div id="screen-app" class="screen" style="display:none;">
+  <header class="app-header">
+    <div class="brand-sm">fën</div>
+    <div id="user-info" class="user-info">
+      <img id="user-avatar" src="" alt="" class="avatar" />
+      <span id="user-name"></span>
+    </div>
+    <button id="btn-logout" class="btn-ghost btn-sm">salir</button>
+  </header>
+
+  <section class="clock-section">
+    <div id="clock" class="clock">--:--:--</div>
+    <div id="clock-date" class="clock-date"></div>
+  </section>
+
+  <div id="shift-status" class="shift-status" style="display:none;"></div>
+
+  <div class="jornada-selector">
+    <label class="label-sm">tipo de jornada</label>
+    <div class="radio-group">
+      <label class="radio-option">
+        <input type="radio" name="jornada" value="ordinaria" checked />
+        <span>ordinaria</span>
+      </label>
+      <label class="radio-option radio-feriado">
+        <input type="radio" name="jornada" value="feriado" />
+        <span>feriado</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="fichar-btns">
+    <button id="btn-entrada" class="btn-entrada" disabled>→ marcar entrada</button>
+    <button id="btn-salida" class="btn-salida" disabled>← marcar salida</button>
+  </div>
+
+  <div id="extras-alert" class="extras-alert" style="display:none;">
+    <span class="extras-icon">⚡</span>
+    <span id="extras-msg"></span>
+  </div>
+
+  <section class="recent-section">
+    <h2 class="section-title">mis últimos registros</h2>
+    <div id="recent-list" class="recent-list"><p class="empty-state">cargando...</p></div>
+  </section>
+
+  <section id="bhe-summary" class="bhe-summary" style="display:none;">
+    <h2 class="section-title">resumen del mes</h2>
+    <div id="bhe-cards" class="metric-grid"></div>
+  </section>
+</div>
+
+<script>
+// auth.js — Google Sign-In + control de acceso por correo
+
+const Auth = (() => {
+  let currentUser = null;
+  let workerProfile = null;
+
+  async function init() {
+    return new Promise((resolve) => {
+      google.accounts.id.initialize({
+        client_id: FEN_CONFIG.GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          const payload = parseJwt(response.credential);
+          currentUser = {
+            email: payload.email,
+            name: payload.name,
+            picture: payload.picture,
+          };
+          workerProfile = await Sheets.getWorkerByEmail(currentUser.email);
+          resolve({ user: currentUser, profile: workerProfile });
+        },
+        auto_select: true,
+      });
+      google.accounts.id.prompt();
+    });
+  }
+
+  function renderButton(containerId) {
+    google.accounts.id.renderButton(document.getElementById(containerId), {
+      theme: 'outline',
+      size: 'large',
+      text: 'signin_with',
+      locale: 'es',
+      width: 280,
+    });
+  }
+
+  function parseJwt(token) {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(base64).split('').map(c =>
+      '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+  }
+
+  function getUser() { return currentUser; }
+  function getProfile() { return workerProfile; }
+  function isAdmin() {
+    if (!currentUser) return false;
+    if (currentUser.email === FEN_CONFIG.ADMIN_EMAIL) return true;
+    return workerProfile && workerProfile.admin === 'true';
+  }
+  function isLoggedIn() { return currentUser !== null; }
+
+  function signOut() {
+    google.accounts.id.disableAutoSelect();
+    currentUser = null;
+    workerProfile = null;
+    window.location.reload();
+  }
+
+  return { init, renderButton, getUser, getProfile, isAdmin, isLoggedIn, signOut };
+})();
+
+// sheets.js — lectura y escritura en Google Sheets via API REST
+
+const Sheets = (() => {
+  const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+  let accessToken = null;
+
+  // ─── Token OAuth ──────────────────────────────────────────
+  function setToken(token) { accessToken = token; }
+
+  async function getToken() {
+    return new Promise((resolve, reject) => {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: FEN_CONFIG.GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/spreadsheets',
+        callback: (resp) => {
+          if (resp.error) reject(resp.error);
+          else { accessToken = resp.access_token; resolve(resp.access_token); }
+        },
+      });
+      client.requestAccessToken({ prompt: '' });
+    });
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────
+  async function read(range) {
+    const url = `${BASE}/${FEN_CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?key=${FEN_CONFIG.API_KEY}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    return d.values || [];
+  }
+
+  async function write(range, values) {
+    if (!accessToken) await getToken();
+    const url = `${BASE}/${FEN_CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+    await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+  }
+
+  async function append(range, values) {
+    if (!accessToken) await getToken();
+    const url = `${BASE}/${FEN_CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+  }
+
+  // ─── Trabajadores ─────────────────────────────────────────
+  async function getWorkers() {
+    const rows = await read('trabajadores!A2:H');
+    return rows.map(r => ({
+      email:        r[0] || '',
+      nombre:       r[1] || '',
+      tipo:         r[2] || '',   // 'contrato' | 'BHE'
+      horasSemana:  parseFloat(r[3]) || 0,
+      valorHora:    parseFloat(r[4]) || 0,
+      activo:       r[5] !== 'false',
+      admin:        r[6] === 'true',
+    }));
+  }
+
+  async function getWorkerByEmail(email) {
+    const workers = await getWorkers();
+    return workers.find(w => w.email.toLowerCase() === email.toLowerCase()) || null;
+  }
+
+  // ─── Registros ────────────────────────────────────────────
+  async function getRecords(emailFilter = null) {
+    const rows = await read('registros!A2:I');
+    let records = rows.map(r => ({
+      id:             r[0] || '',
+      email:          r[1] || '',
+      nombre:         r[2] || '',
+      fecha:          r[3] || '',
+      entrada:        r[4] || '',
+      salida:         r[5] || '',
+      tipoJornada:    r[6] || 'ordinaria',  // 'ordinaria' | 'feriado'
+      horasTrabajadas: parseFloat(r[7]) || 0,
+      observacion:    r[8] || '',
+    }));
+    if (emailFilter) records = records.filter(r => r.email === emailFilter);
+    return records;
+  }
+
+  async function checkIn(worker, tipoJornada = 'ordinaria') {
+    const now = new Date();
+    const id = Date.now().toString();
+    const fecha = formatDate(now);
+    const entrada = formatTime(now);
+    await append('registros!A:I', [[
+      id, worker.email, worker.nombre, fecha, entrada, '', tipoJornada, '', ''
+    ]]);
+    return id;
+  }
+
+  async function checkOut(recordId, email) {
+    const rows = await read('registros!A2:I');
+    const idx = rows.findIndex(r => r[0] === recordId && r[1] === email);
+    if (idx === -1) throw new Error('Registro no encontrado');
+    const entrada = rows[idx][4];
+    const salida = formatTime(new Date());
+    const horas = calcHoras(entrada, salida);
+    const rowNum = idx + 2;
+    await write(`registros!F${rowNum}:H${rowNum}`, [[salida, horas.toFixed(2), '']]);
+    return { salida, horas };
+  }
+
+  async function getOpenShift(email) {
+    const rows = await read('registros!A2:I');
+    const open = rows.find(r => r[1] === email && r[4] && !r[5]);
+    if (!open) return null;
+    return { id: open[0], email: open[1], nombre: open[2], fecha: open[3], entrada: open[4], tipoJornada: open[6] || 'ordinaria' };
+  }
+
+  // ─── Feriados ─────────────────────────────────────────────
+  async function getFeriados() {
+    const rows = await read('feriados!A2:B');
+    return rows.map(r => ({ fecha: r[0], descripcion: r[1] || '' }));
+  }
+
+  async function isFeriado(fecha) {
+    const feriados = await getFeriados();
+    return feriados.some(f => f.fecha === fecha);
+  }
+
+  // ─── Utils ────────────────────────────────────────────────
+  function formatDate(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  function formatTime(d) {
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function pad(n) { return n.toString().padStart(2, '0'); }
+  function calcHoras(entrada, salida) {
+    const [eh, em] = entrada.split(':').map(Number);
+    const [sh, sm] = salida.split(':').map(Number);
+    return ((sh * 60 + sm) - (eh * 60 + em)) / 60;
+  }
+
+  return {
+    setToken, getToken,
+    getWorkers, getWorkerByEmail,
+    getRecords, checkIn, checkOut, getOpenShift,
+    getFeriados, isFeriado,
+    formatDate, formatTime, pad,
+  };
+})();
+
+// reportes.js — cálculo de horas, extras, BHE y resúmenes
+
+const Reportes = (() => {
+
+  // ─── Contrato fijo ────────────────────────────────────────
+
+  function calcResumenContrato(worker, records, mes, anio) {
+    const filtered = records.filter(r => {
+      if (r.email !== worker.email) return false;
+      if (!r.salida) return false;
+      const d = new Date(r.fecha);
+      return d.getMonth() + 1 === mes && d.getFullYear() === anio;
+    });
+
+    // Agrupar por semana ISO
+    const semanas = {};
+    filtered.forEach(r => {
+      const semana = getWeekKey(r.fecha);
+      if (!semanas[semana]) semanas[semana] = { horas: 0, dias: [] };
+      semanas[semana].horas += parseFloat(r.horasTrabajadas) || 0;
+      semanas[semana].dias.push(r);
+    });
+
+    const horasContrato = worker.horasSemana;
+    let totalHoras = 0;
+    let totalExtras = 0;
+
+    Object.values(semanas).forEach(s => {
+      totalHoras += s.horas;
+      if (s.horas > horasContrato) {
+        totalExtras += s.horas - horasContrato;
+      }
+    });
+
+    const horasOrdinarias = totalHoras - totalExtras;
+
+    return {
+      worker,
+      mes, anio,
+      registros: filtered,
+      semanas,
+      totalHoras: round2(totalHoras),
+      horasOrdinarias: round2(horasOrdinarias),
+      horasExtras: round2(totalExtras),
+      horasContrato,
+      diasTrabajados: filtered.length,
+    };
+  }
+
+  function tieneExtrasActivas(worker, records) {
+    const hoy = new Date();
+    const semanaActual = getWeekKey(Sheets.formatDate(hoy));
+    const estaSemana = records.filter(r =>
+      r.email === worker.email && getWeekKey(r.fecha) === semanaActual
+    );
+    const horasSemana = estaSemana.reduce((s, r) => s + (parseFloat(r.horasTrabajadas) || 0), 0);
+    return horasSemana > worker.horasSemana;
+  }
+
+  // ─── BHE ──────────────────────────────────────────────────
+
+  function calcResumenBHE(worker, records, mes, anio) {
+    const filtered = records.filter(r => {
+      if (r.email !== worker.email) return false;
+      if (!r.salida) return false;
+      const d = new Date(r.fecha);
+      return d.getMonth() + 1 === mes && d.getFullYear() === anio;
+    });
+
+    const detalle = filtered.map(r => {
+      const horas = parseFloat(r.horasTrabajadas) || 0;
+      const esFeriado = r.tipoJornada === 'feriado';
+      const valorHora = esFeriado
+        ? worker.valorHora * FEN_CONFIG.FERIADO_MULTIPLICADOR
+        : worker.valorHora;
+      const montoJornada = round0(horas * valorHora);
+      return {
+        ...r,
+        horas,
+        esFeriado,
+        valorHora: round0(valorHora),
+        montoJornada,
+      };
+    });
+
+    const bruto = detalle.reduce((s, d) => s + d.montoJornada, 0);
+    const descuento = round0(bruto * FEN_CONFIG.BHE_DESCUENTO);
+    const liquido = bruto - descuento;
+    const totalHoras = round2(detalle.reduce((s, d) => s + d.horas, 0));
+
+    return {
+      worker,
+      mes, anio,
+      detalle,
+      totalHoras,
+      diasTrabajados: detalle.length,
+      bruto,
+      descuento,
+      liquido,
+      porcentajeDescuento: FEN_CONFIG.BHE_DESCUENTO * 100,
+    };
+  }
+
+  // ─── Consolidado contrato (para contadora) ─────────────────
+
+  function calcConsolidado(workers, records, mes, anio) {
+    const contratos = workers.filter(w => w.tipo === 'contrato' && w.activo);
+    return contratos.map(w => calcResumenContrato(w, records, mes, anio));
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────
+
+  function getWeekKey(fechaStr) {
+    const d = new Date(fechaStr + 'T12:00:00');
+    const dow = d.getDay() || 7;
+    d.setDate(d.getDate() + 4 - dow);
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+    return `${d.getFullYear()}-W${week.toString().padStart(2, '0')}`;
+  }
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+  function round0(n) { return Math.round(n); }
+
+  function nombreMes(mes) {
+    return ['enero','febrero','marzo','abril','mayo','junio',
+            'julio','agosto','septiembre','octubre','noviembre','diciembre'][mes - 1];
+  }
+
+  return {
+    calcResumenContrato,
+    calcResumenBHE,
+    calcConsolidado,
+    tieneExtrasActivas,
+    nombreMes,
+    getWeekKey,
+  };
+})();
+</script>
+
+<script>
+// ── CONFIG PLACEHOLDER — reemplazado por config.js ──────────
+// Se carga desde config.js en el mismo directorio
+</script>
+<script src="config.js"></script>
+
+<script>
+(async () => {
+  function tick() {
+    const now = new Date();
+    const pad = n => n.toString().padStart(2,'0');
+    document.getElementById('clock').textContent =
+      `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    document.getElementById('clock-date').textContent =
+      now.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  }
+  setInterval(tick, 1000);
+  tick();
+
+  Auth.renderButton('google-btn');
+  const { user, profile } = await Auth.init().catch(() => ({}));
+  if (!user) return;
+
+  if (!profile) {
+    document.getElementById('login-error').textContent =
+      'Tu correo no está registrado en fën. Contacta al administrador.';
+    document.getElementById('login-error').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('screen-login').style.display = 'none';
+  document.getElementById('screen-app').style.display = 'block';
+  document.getElementById('user-name').textContent = profile.nombre;
+  document.getElementById('user-avatar').src = user.picture;
+
+  if (Auth.isAdmin()) {
+    const a = document.createElement('a');
+    a.href = 'admin.html';
+    a.className = 'btn-ghost btn-sm';
+    a.textContent = 'panel admin';
+    document.querySelector('.app-header').insertBefore(a, document.getElementById('btn-logout'));
+  }
+
+  document.getElementById('btn-logout').addEventListener('click', Auth.signOut);
+
+  await Sheets.getToken();
+  let records = await Sheets.getRecords(user.email);
+  let openShift = await Sheets.getOpenShift(user.email);
+
+  function updateShiftStatus() {
+    const box = document.getElementById('shift-status');
+    const btnIn = document.getElementById('btn-entrada');
+    const btnOut = document.getElementById('btn-salida');
+    if (openShift) {
+      box.style.display = 'flex';
+      box.innerHTML = `<span class="status-dot active"></span> trabajando desde las <strong>${openShift.entrada}</strong> · jornada ${openShift.tipoJornada}`;
+      btnIn.disabled = true;
+      btnOut.disabled = false;
+    } else {
+      box.style.display = 'none';
+      btnIn.disabled = false;
+      btnOut.disabled = true;
+    }
+    if (profile.tipo === 'contrato') {
+      const tieneExtras = Reportes.tieneExtrasActivas(profile, records);
+      const alertEl = document.getElementById('extras-alert');
+      if (tieneExtras) {
+        alertEl.style.display = 'flex';
+        document.getElementById('extras-msg').textContent = 'ya estás acumulando horas extras esta semana';
+      } else {
+        alertEl.style.display = 'none';
+      }
+    }
+  }
+
+  function renderRecent() {
+    const list = document.getElementById('recent-list');
+    const recent = [...records]
+      .sort((a,b) => new Date(b.fecha+' '+b.entrada) - new Date(a.fecha+' '+a.entrada))
+      .slice(0, 7);
+    if (recent.length === 0) {
+      list.innerHTML = '<p class="empty-state">aún no tienes registros.</p>';
+      return;
+    }
+    list.innerHTML = recent.map(r => `
+      <div class="record-row ${r.tipoJornada === 'feriado' ? 'record-feriado' : ''}">
+        <span class="record-date">${r.fecha}</span>
+        <span class="record-times">${r.entrada} → ${r.salida || '<em>en curso</em>'}</span>
+        <span class="record-hours">${r.salida ? r.horasTrabajadas + ' h' : '—'}</span>
+        ${r.tipoJornada === 'feriado' ? '<span class="badge-feriado">feriado</span>' : ''}
+      </div>`).join('');
+  }
+
+  function renderBHE() {
+    if (profile.tipo !== 'BHE') return;
+    document.getElementById('bhe-summary').style.display = 'block';
+    const now = new Date();
+    const res = Reportes.calcResumenBHE(profile, records, now.getMonth() + 1, now.getFullYear());
+    const fmt = n => '$' + n.toLocaleString('es-CL');
+    document.getElementById('bhe-cards').innerHTML = [
+      ['horas trabajadas', res.totalHoras + ' h'],
+      ['bruto', fmt(res.bruto)],
+      [`descuento ${res.porcentajeDescuento}%`, fmt(res.descuento)],
+      ['líquido', fmt(res.liquido)],
+    ].map(([l,v]) => `<div class="metric-card"><div class="metric-label">${l}</div><div class="metric-value">${v}</div></div>`).join('');
+  }
+
+  document.getElementById('btn-entrada').addEventListener('click', async () => {
+    const jornada = document.querySelector('input[name="jornada"]:checked').value;
+    document.getElementById('btn-entrada').disabled = true;
+    document.getElementById('btn-entrada').textContent = 'registrando...';
+    try {
+      const id = await Sheets.checkIn(profile, jornada);
+      openShift = { id, email: user.email, nombre: profile.nombre,
+                    fecha: Sheets.formatDate(new Date()), entrada: Sheets.formatTime(new Date()), tipoJornada: jornada };
+      records = await Sheets.getRecords(user.email);
+      updateShiftStatus();
+      renderRecent();
+    } catch(e) { alert('Error al registrar entrada. Intenta de nuevo.'); }
+    document.getElementById('btn-entrada').textContent = '→ marcar entrada';
+  });
+
+  document.getElementById('btn-salida').addEventListener('click', async () => {
+    if (!openShift) return;
+    document.getElementById('btn-salida').disabled = true;
+    document.getElementById('btn-salida').textContent = 'registrando...';
+    try {
+      await Sheets.checkOut(openShift.id, user.email);
+      openShift = null;
+      records = await Sheets.getRecords(user.email);
+      updateShiftStatus();
+      renderRecent();
+      renderBHE();
+    } catch(e) { alert('Error al registrar salida. Intenta de nuevo.'); }
+    document.getElementById('btn-salida').textContent = '← marcar salida';
+  });
+
+  updateShiftStatus();
+  renderRecent();
+  renderBHE();
+})();
+</script>
+</body>
+</html>
