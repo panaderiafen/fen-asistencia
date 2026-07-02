@@ -610,6 +610,13 @@ const Auth = (() => {
         },
         auto_select: false,
       });
+      google.accounts.id.renderButton(document.getElementById('google-btn'), {
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        locale: 'es',
+        width: 280,
+      });
       google.accounts.id.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
           resolve({});
@@ -619,13 +626,7 @@ const Auth = (() => {
   }
 
   function renderButton(containerId) {
-    google.accounts.id.renderButton(document.getElementById(containerId), {
-      theme: 'outline',
-      size: 'large',
-      text: 'signin_with',
-      locale: 'es',
-      width: 280,
-    });
+    // renderButton ahora se hace dentro de init()
   }
 
   function parseJwt(token) {
