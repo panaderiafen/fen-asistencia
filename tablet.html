@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>fën · registro</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --charcoal:  #28231e;
+      --charcoal2: #3d3630;
+      --bone:      #f5edd7;
+      --bone2:     #ede0c4;
+      --ember:     #ba7517;
+      --ember-lt:  #faeeda;
+      --warning:   #b43c1d;
+      --border:    #d8cdb8;
+      --radius:    14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--charcoal);
+      color: var(--bone);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+      border-bottom: 2px solid var(--ember);
+    }
+
+    .logo {
+      height: 52px;
+      border-radius: 10px;
+      object-fit: contain;
+    }
+
+    .clock-wrap { text-align: right; }
+    .clock { font-size: 36px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: 2px; font-family: 'SF Mono', monospace; }
+    .clock-date { font-size: 13px; color: rgba(245,237,215,0.6); margin-top: 2px; text-transform: lowercase; }
+
+    /* ── Pantallas ── */
+    .screen { display: none; flex: 1; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    /* ── Lista trabajadores ── */
+    .screen-workers {
+      padding: 2rem;
+      gap: 1rem;
+    }
+
+    .screen-title {
+      font-size: 18px;
+      color: rgba(245,237,215,0.6);
+      text-align: center;
+      margin-bottom: 0.5rem;
+      font-weight: 400;
+    }
+
+    .workers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      overflow-y: auto;
+      flex: 1;
+      padding-bottom: 1rem;
+    }
+
+    .worker-btn {
+      background: var(--charcoal2);
+      border: 1.5px solid rgba(245,237,215,0.1);
+      border-radius: var(--radius);
+      padding: 1.5rem 1rem;
+      color: var(--bone);
+      font-size: 18px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      font-family: inherit;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .worker-btn:active { transform: scale(0.97); background: #4a4035; }
+    .worker-btn .worker-initial {
+      width: 52px; height: 52px;
+      background: var(--ember);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700; color: var(--bone);
+    }
+    .worker-btn .worker-tipo {
+      font-size: 11px;
+      color: rgba(245,237,215,0.4);
+      font-weight: 400;
+    }
+    .worker-btn.sin-pin .worker-initial { background: #555; }
+
+    /* ── PIN ── */
+    .screen-pin {
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 2rem;
+    }
+
+    .pin-worker-name {
+      font-size: 26px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .pin-hint { font-size: 15px; color: rgba(245,237,215,0.5); }
+
+    .pin-dots {
+      display: flex;
+      gap: 16px;
+      margin: 0.5rem 0;
+    }
+
+    .pin-dot {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--ember);
+      background: transparent;
+      transition: background 0.15s;
+    }
+    .pin-dot.filled { background: var(--ember); }
+
+    .pin-error {
+      color: #ff6b6b;
+      font-size: 14px;
+      min-height: 20px;
+      text-align: center;
+    }
+
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .num-btn {
+      background: var(--charcoal2);
+      border: 1.5px solid rgba(245,237,215,0.1);
+      border-radius: var(--radius);
+      color: var(--bone);
+      font-size: 28px;
+      font-weight: 400;
+      padding: 1rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.1s;
+      aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .num-btn:active { background: #4a4035; transform: scale(0.95); }
+    .num-btn.del { font-size: 20px; color: rgba(245,237,215,0.5); }
+    .num-btn.empty { background: transparent; border: none; cursor: default; }
+
+    .btn-back {
+      background: transparent;
+      border: 1px solid rgba(245,237,215,0.2);
+      color: rgba(245,237,215,0.5);
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 0.5rem;
+    }
+
+    /* ── Fichar ── */
+    .screen-fichar {
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 2rem;
+    }
+
+    .fichar-nombre { font-size: 28px; font-weight: 600; text-align: center; }
+
+    .turno-activo {
+      background: rgba(186,117,23,0.15);
+      border: 1px solid var(--ember);
+      border-radius: var(--radius);
+      padding: 1rem 1.5rem;
+      font-size: 15px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #2d8a4e;
+      box-shadow: 0 0 0 3px rgba(45,138,78,0.25);
+      flex-shrink: 0;
+    }
+
+    .jornada-selector {
+      display: flex;
+      gap: 10px;
+    }
+
+    .jornada-btn {
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1.5px solid rgba(245,237,215,0.2);
+      background: transparent;
+      color: rgba(245,237,215,0.6);
+      transition: all 0.15s;
+    }
+    .jornada-btn.active {
+      background: var(--charcoal2);
+      border-color: var(--ember);
+      color: var(--bone);
+    }
+
+    .fichar-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .btn-entrada {
+      background: var(--ember);
+      color: var(--bone);
+      border: none;
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      font-size: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .btn-entrada:active:not(:disabled) { transform: scale(0.97); }
+    .btn-entrada:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .btn-salida {
+      background: var(--charcoal2);
+      color: var(--bone);
+      border: 1.5px solid rgba(245,237,215,0.2);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      font-size: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .btn-salida:active:not(:disabled) { transform: scale(0.97); }
+    .btn-salida:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .btn-solicitar {
+      background: transparent;
+      border: 1px solid rgba(245,237,215,0.2);
+      color: rgba(245,237,215,0.5);
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 0.5rem;
+    }
+    .btn-solicitar:hover { color: var(--bone); border-color: rgba(245,237,215,0.4); }
+
+    /* ── Confirmación ── */
+    .screen-confirm {
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .confirm-icon {
+      font-size: 72px;
+      animation: pop 0.3s ease;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0.5); opacity: 0; }
+      80% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .confirm-title { font-size: 32px; font-weight: 600; }
+    .confirm-sub { font-size: 18px; color: rgba(245,237,215,0.6); }
+    .confirm-hora { font-size: 48px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: 2px; color: var(--ember); }
+
+    .confirm-bar {
+      width: 200px;
+      height: 4px;
+      background: rgba(245,237,215,0.15);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .confirm-bar-inner {
+      height: 100%;
+      background: var(--ember);
+      border-radius: 2px;
+      animation: shrink 5s linear forwards;
+    }
+    @keyframes shrink { from { width: 100%; } to { width: 0%; } }
+
+    /* ── Solicitar estado ── */
+    .screen-solicitar {
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .solicitar-title { font-size: 24px; font-weight: 600; }
+    .solicitar-sub { font-size: 15px; color: rgba(245,237,215,0.5); max-width: 380px; line-height: 1.6; }
+
+    .btn-confirmar-solicitud {
+      background: var(--ember);
+      color: var(--bone);
+      border: none;
+      border-radius: var(--radius);
+      padding: 1rem 2.5rem;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-confirmar-solicitud:active { transform: scale(0.97); }
+    .btn-confirmar-solicitud:disabled { opacity: 0.5; }
+
+    /* ── Loading ── */
+    .loading { opacity: 0.5; font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- Header siempre visible -->
+<div class="header">
+  <img src="logosecundario.jpg" alt="fën" class="logo" />
+  <div class="clock-wrap">
+    <div id="clock" class="clock">--:--:--</div>
+    <div id="clock-date" class="clock-date"></div>
+  </div>
+</div>
+
+<!-- Pantalla 1: Lista de trabajadores -->
+<div class="screen screen-workers active" id="screen-workers">
+  <p class="screen-title">¿quién eres?</p>
+  <div class="workers-grid" id="workers-grid">
+    <p class="loading">cargando equipo...</p>
+  </div>
+</div>
+
+<!-- Pantalla 2: PIN -->
+<div class="screen screen-pin" id="screen-pin">
+  <div class="pin-worker-name" id="pin-nombre"></div>
+  <p class="pin-hint">ingresa tu PIN de 4 dígitos</p>
+  <div class="pin-dots">
+    <div class="pin-dot" id="dot-0"></div>
+    <div class="pin-dot" id="dot-1"></div>
+    <div class="pin-dot" id="dot-2"></div>
+    <div class="pin-dot" id="dot-3"></div>
+  </div>
+  <p class="pin-error" id="pin-error"></p>
+  <div class="numpad">
+    <button class="num-btn" data-n="1">1</button>
+    <button class="num-btn" data-n="2">2</button>
+    <button class="num-btn" data-n="3">3</button>
+    <button class="num-btn" data-n="4">4</button>
+    <button class="num-btn" data-n="5">5</button>
+    <button class="num-btn" data-n="6">6</button>
+    <button class="num-btn" data-n="7">7</button>
+    <button class="num-btn" data-n="8">8</button>
+    <button class="num-btn" data-n="9">9</button>
+    <button class="num-btn empty"></button>
+    <button class="num-btn" data-n="0">0</button>
+    <button class="num-btn del" id="btn-del">⌫</button>
+  </div>
+  <button class="btn-back" id="btn-back-pin">← volver</button>
+</div>
+
+<!-- Pantalla 3: Fichar -->
+<div class="screen screen-fichar" id="screen-fichar">
+  <div class="fichar-nombre" id="fichar-nombre"></div>
+  <div id="turno-activo-box" class="turno-activo" style="display:none;">
+    <div class="status-dot"></div>
+    <span id="turno-activo-txt"></span>
+  </div>
+  <div class="jornada-selector">
+    <button class="jornada-btn active" id="jornada-ordinaria" data-j="ordinaria">ordinaria</button>
+    <button class="jornada-btn" id="jornada-feriado" data-j="feriado">feriado 🎉</button>
+  </div>
+  <div class="fichar-btns">
+    <button class="btn-entrada" id="btn-entrada">→ entrada</button>
+    <button class="btn-salida" id="btn-salida">← salida</button>
+  </div>
+  <button class="btn-solicitar" id="btn-solicitar">solicitar estado de horas</button>
+  <button class="btn-back" id="btn-back-fichar">← cambiar trabajador</button>
+</div>
+
+<!-- Pantalla 4: Confirmación -->
+<div class="screen screen-confirm" id="screen-confirm">
+  <div class="confirm-icon" id="confirm-icon">✅</div>
+  <div class="confirm-title" id="confirm-title"></div>
+  <div class="confirm-hora" id="confirm-hora"></div>
+  <div class="confirm-sub" id="confirm-sub"></div>
+  <div class="confirm-bar"><div class="confirm-bar-inner" id="confirm-bar"></div></div>
+</div>
+
+<!-- Pantalla 5: Solicitar estado -->
+<div class="screen screen-solicitar" id="screen-solicitar">
+  <div class="confirm-icon">📋</div>
+  <div class="solicitar-title" id="solicitar-nombre"></div>
+  <p class="solicitar-sub">Se enviará un correo al administrador con tu resumen y detalle de horas del mes actual.</p>
+  <button class="btn-confirmar-solicitud" id="btn-confirmar-solicitud">enviar solicitud</button>
+  <button class="btn-back" id="btn-back-solicitar">← cancelar</button>
+</div>
+
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbxiePnuf-lVZYeSipFgRLjFZpukCF78j4Bl6aQsQt6bkDOznOZXXsIi9YntXM0b101F/exec';
+
+let currentWorker = null;
+let openShift = null;
+let pinBuffer = '';
+let jornadaActual = 'ordinaria';
+
+// ── Reloj ──────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  const pad = n => n.toString().padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  document.getElementById('clock-date').textContent =
+    now.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long' });
+}
+setInterval(tick, 1000);
+tick();
+
+// ── Navegación ─────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Cargar trabajadores ────────────────────────────────────
+async function loadWorkers() {
+  try {
+    const r = await fetch(`${API}?action=getWorkers`);
+    const data = await r.json();
+    const grid = document.getElementById('workers-grid');
+    if (!data.workers || data.workers.length === 0) {
+      grid.innerHTML = '<p class="loading">No hay trabajadores registrados.</p>';
+      return;
+    }
+    grid.innerHTML = data.workers.map(w => `
+      <button class="worker-btn ${w.tienePin ? '' : 'sin-pin'}" data-email="${w.email}" data-nombre="${w.nombre}" data-tipo="${w.tipo}">
+        <div class="worker-initial">${w.nombre.charAt(0).toUpperCase()}</div>
+        <span>${w.nombre}</span>
+        <span class="worker-tipo">${w.tipo === 'BHE' ? 'honorarios' : 'contrato'}${!w.tienePin ? ' · sin PIN' : ''}</span>
+      </button>
+    `).join('');
+
+    document.querySelectorAll('.worker-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!btn.dataset.email) return;
+        currentWorker = { email: btn.dataset.email, nombre: btn.dataset.nombre, tipo: btn.dataset.tipo };
+        startPin();
+      });
+    });
+  } catch(e) {
+    document.getElementById('workers-grid').innerHTML = '<p class="loading">Error cargando equipo. Verifica la conexión.</p>';
+  }
+}
+
+// ── PIN ────────────────────────────────────────────────────
+function startPin() {
+  pinBuffer = '';
+  document.getElementById('pin-nombre').textContent = currentWorker.nombre;
+  document.getElementById('pin-error').textContent = '';
+  updatePinDots();
+  showScreen('screen-pin');
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById(`dot-${i}`).classList.toggle('filled', i < pinBuffer.length);
+  }
+}
+
+document.querySelectorAll('.num-btn[data-n]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (pinBuffer.length >= 4) return;
+    pinBuffer += btn.dataset.n;
+    updatePinDots();
+    if (pinBuffer.length === 4) submitPin();
+  });
+});
+
+document.getElementById('btn-del').addEventListener('click', () => {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+});
+
+document.getElementById('btn-back-pin').addEventListener('click', () => {
+  showScreen('screen-workers');
+});
+
+async function submitPin() {
+  document.getElementById('pin-error').textContent = '';
+  try {
+    const r = await fetch(`${API}?action=verifyPin&email=${encodeURIComponent(currentWorker.email)}&pin=${pinBuffer}`);
+    const data = await r.json();
+    if (data.success) {
+      await loadFichar();
+    } else {
+      document.getElementById('pin-error').textContent = data.error || 'PIN incorrecto';
+      pinBuffer = '';
+      updatePinDots();
+    }
+  } catch(e) {
+    document.getElementById('pin-error').textContent = 'Error de conexión. Intenta de nuevo.';
+    pinBuffer = '';
+    updatePinDots();
+  }
+}
+
+// ── Fichar ─────────────────────────────────────────────────
+async function loadFichar() {
+  document.getElementById('fichar-nombre').textContent = currentWorker.nombre;
+  showScreen('screen-fichar');
+
+  // Verificar turno abierto
+  try {
+    const r = await fetch(`${API}?action=getOpenShift&email=${encodeURIComponent(currentWorker.email)}`);
+    openShift = await r.json();
+  } catch(e) { openShift = { id: null }; }
+
+  updateFicharBtns();
+}
+
+function updateFicharBtns() {
+  const box = document.getElementById('turno-activo-box');
+  const btnIn = document.getElementById('btn-entrada');
+  const btnOut = document.getElementById('btn-salida');
+
+  if (openShift && openShift.id) {
+    box.style.display = 'flex';
+    document.getElementById('turno-activo-txt').textContent =
+      `trabajando desde las ${openShift.entrada} · jornada ${openShift.tipoJornada}`;
+    btnIn.disabled = true;
+    btnOut.disabled = false;
+  } else {
+    box.style.display = 'none';
+    btnIn.disabled = false;
+    btnOut.disabled = true;
+  }
+}
+
+// Selector jornada
+document.querySelectorAll('.jornada-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.jornada-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    jornadaActual = btn.dataset.j;
+  });
+});
+
+document.getElementById('btn-entrada').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-entrada');
+  btn.disabled = true;
+  btn.textContent = 'registrando...';
+  try {
+    const r = await fetch(`${API}?action=checkIn&email=${encodeURIComponent(currentWorker.email)}&nombre=${encodeURIComponent(currentWorker.nombre)}&jornada=${jornadaActual}`);
+    const data = await r.json();
+    if (data.success) {
+      openShift = { id: data.id, entrada: data.entrada, tipoJornada: jornadaActual };
+      showConfirm('entrada', data.entrada, jornadaActual);
+    } else {
+      alert(data.error || 'Error al registrar entrada');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    alert('Error de conexión');
+    btn.disabled = false;
+  }
+  btn.textContent = '→ entrada';
+});
+
+document.getElementById('btn-salida').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-salida');
+  btn.disabled = true;
+  btn.textContent = 'registrando...';
+  try {
+    const r = await fetch(`${API}?action=checkOut&id=${encodeURIComponent(openShift.id)}&email=${encodeURIComponent(currentWorker.email)}`);
+    const data = await r.json();
+    if (data.success) {
+      showConfirm('salida', data.salida, null, data.horas);
+      openShift = { id: null };
+    } else {
+      alert(data.error || 'Error al registrar salida');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    alert('Error de conexión');
+    btn.disabled = false;
+  }
+  btn.textContent = '← salida';
+});
+
+document.getElementById('btn-back-fichar').addEventListener('click', () => {
+  currentWorker = null;
+  openShift = null;
+  showScreen('screen-workers');
+});
+
+// ── Confirmación ───────────────────────────────────────────
+function showConfirm(tipo, hora, jornada, horas) {
+  const isEntrada = tipo === 'entrada';
+  document.getElementById('confirm-icon').textContent = isEntrada ? '✅' : '👋';
+  document.getElementById('confirm-title').textContent = isEntrada ? '¡Entrada registrada!' : '¡Salida registrada!';
+  document.getElementById('confirm-hora').textContent = hora;
+  document.getElementById('confirm-sub').textContent = isEntrada
+    ? `jornada ${jornada}`
+    : `${horas} horas trabajadas`;
+
+  // Resetear barra
+  const bar = document.getElementById('confirm-bar');
+  bar.style.animation = 'none';
+  bar.offsetHeight;
+  bar.style.animation = 'shrink 5s linear forwards';
+
+  showScreen('screen-confirm');
+
+  setTimeout(() => {
+    currentWorker = null;
+    openShift = null;
+    jornadaActual = 'ordinaria';
+    document.querySelectorAll('.jornada-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('jornada-ordinaria').classList.add('active');
+    showScreen('screen-workers');
+  }, 5000);
+}
+
+// ── Solicitar estado ───────────────────────────────────────
+document.getElementById('btn-solicitar').addEventListener('click', () => {
+  document.getElementById('solicitar-nombre').textContent = currentWorker.nombre;
+  showScreen('screen-solicitar');
+});
+
+document.getElementById('btn-back-solicitar').addEventListener('click', () => {
+  showScreen('screen-fichar');
+});
+
+document.getElementById('btn-confirmar-solicitud').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-confirmar-solicitud');
+  btn.disabled = true;
+  btn.textContent = 'enviando...';
+  try {
+    const r = await fetch(`${API}?action=solicitarEstado&email=${encodeURIComponent(currentWorker.email)}`);
+    const data = await r.json();
+    if (data.success) {
+      document.getElementById('confirm-icon').textContent = '📬';
+      document.getElementById('confirm-title').textContent = 'Solicitud enviada';
+      document.getElementById('confirm-hora').textContent = '';
+      document.getElementById('confirm-sub').textContent = 'El administrador recibirá tu estado de horas por correo.';
+      const bar = document.getElementById('confirm-bar');
+      bar.style.animation = 'none';
+      bar.offsetHeight;
+      bar.style.animation = 'shrink 5s linear forwards';
+      showScreen('screen-confirm');
+      setTimeout(() => {
+        currentWorker = null;
+        openShift = null;
+        showScreen('screen-workers');
+      }, 5000);
+    } else {
+      alert(data.error || 'Error al enviar solicitud');
+      btn.disabled = false;
+      btn.textContent = 'enviar solicitud';
+    }
+  } catch(e) {
+    alert('Error de conexión');
+    btn.disabled = false;
+    btn.textContent = 'enviar solicitud';
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────
+loadWorkers();
+</script>
+</body>
+</html>
