@@ -40,7 +40,7 @@
 
     .logo {
       height: 52px;
-      border-radius: 10px;
+      border-radius: 14px;
       object-fit: contain;
     }
 
@@ -476,13 +476,21 @@ async function loadWorkers() {
       grid.innerHTML = '<p class="loading">No hay trabajadores registrados.</p>';
       return;
     }
-    grid.innerHTML = data.workers.map(w => `
-      <button class="worker-btn ${w.tienePin ? '' : 'sin-pin'}" data-email="${w.email}" data-nombre="${w.nombre}" data-tipo="${w.tipo}">
-        <div class="worker-initial">${w.nombre.charAt(0).toUpperCase()}</div>
+    grid.innerHTML = data.workers.map(w => {
+      const slug = w.email.split("@")[0];
+      const inicial = w.nombre.charAt(0).toUpperCase();
+      return `
+      <button class="worker-btn ${w.tienePin ? "" : "sin-pin"}" data-email="${w.email}" data-nombre="${w.nombre}" data-tipo="${w.tipo}">
+        <div class="worker-initial">
+          <img src="fotos/${slug}.jpg" alt="${w.nombre}"
+            style="width:100%;height:100%;border-radius:50%;object-fit:cover;"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+          <span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;">${inicial}</span>
+        </div>
         <span>${w.nombre}</span>
-        <span class="worker-tipo">${w.tipo === 'BHE' ? 'honorarios' : 'contrato'}${!w.tienePin ? ' · sin PIN' : ''}</span>
-      </button>
-    `).join('');
+        ${!w.tienePin ? '<span class="worker-tipo">sin PIN asignado</span>' : ""}
+      </button>`;
+    }).join("");
 
     document.querySelectorAll('.worker-btn').forEach(btn => {
       btn.addEventListener('click', () => {
