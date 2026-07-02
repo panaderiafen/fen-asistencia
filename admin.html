@@ -764,33 +764,27 @@ const Sheets = (() => {
   }
 
   async function checkIn(worker, tipoJornada = 'ordinaria') {
-    const now = new Date();
-    const id = Date.now().toString();
-    const fecha = formatDate(now);
-    const entrada = formatTime(now);
-    await append('registros!A:I', [[
-      id, worker.email, worker.nombre, fecha, entrada, '', tipoJornada, '', ''
-    ]]);
-    return id;
+    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=checkIn&email=${encodeURIComponent(worker.email)}&nombre=${encodeURIComponent(worker.nombre)}&jornada=${tipoJornada}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data.id;
   }
 
   async function checkOut(recordId, email) {
-    const rows = await read('registros!A2:I');
-    const idx = rows.findIndex(r => r[0] === recordId && r[1] === email);
-    if (idx === -1) throw new Error('Registro no encontrado');
-    const entrada = rows[idx][4];
-    const salida = formatTime(new Date());
-    const horas = calcHoras(entrada, salida);
-    const rowNum = idx + 2;
-    await write(`registros!F${rowNum}:H${rowNum}`, [[salida, horas.toFixed(2), '']]);
-    return { salida, horas };
+    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=checkOut&id=${encodeURIComponent(recordId)}&email=${encodeURIComponent(email)}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return { salida: data.salida, horas: data.horas };
   }
 
   async function getOpenShift(email) {
-    const rows = await read('registros!A2:I');
-    const open = rows.find(r => r[1] === email && r[4] && !r[5]);
-    if (!open) return null;
-    return { id: open[0], email: open[1], nombre: open[2], fecha: open[3], entrada: open[4], tipoJornada: open[6] || 'ordinaria' };
+    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=getOpenShift&email=${encodeURIComponent(email)}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (!data.id) return null;
+    return data;
   }
 
   // ─── Feriados ─────────────────────────────────────────────
