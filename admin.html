@@ -510,7 +510,45 @@ button:active:not(:disabled) { transform: scale(0.98); }
 }
 
 /* ── Varios ─────────────────────────────────────────────── */
-.empty-state { color: var(--text-muted); font-size: 14px; padding: 1rem 0; }
+.pin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.pin-row .pin-nombre { font-weight: 500; min-width: 120px; flex: 1; }
+.pin-row .pin-estado {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+.pin-row .pin-estado.asignado { background: #d4edda; color: #155724; }
+.pin-row .pin-estado.sin-pin { background: #fff3cd; color: #7a5800; }
+.pin-input-wrap { display: flex; gap: 8px; align-items: center; }
+.pin-input {
+  width: 90px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-family: monospace;
+  letter-spacing: 4px;
+  text-align: center;
+}
+.btn-pin-save {
+  background: var(--charcoal);
+  color: var(--bone);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-pin-save:hover { opacity: 0.85; }
+.pin-msg { font-size: 12px; color: #2d8a4e; }
 .error-msg { color: var(--warning); font-size: 13px; margin-top: 1rem; }
 .hint-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
 
@@ -603,6 +641,10 @@ button:active:not(:disabled) { transform: scale(0.98); }
   <div id="tab-trabajadores" class="tab-content" style="display:none;">
     <p class="hint-text">gestiona el equipo directamente en Google Sheets. los cambios se reflejan al instante.</p>
     <a id="link-sheet" href="#" target="_blank" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:1rem;">abrir Google Sheets →</a>
+
+    <h2 class="section-title" style="margin-top:2rem;">gestión de PINs</h2>
+    <div id="pins-list"></div>
+
     <h2 class="section-title" style="margin-top:2rem;">equipo actual</h2>
     <div id="workers-list"></div>
   </div>
@@ -1372,6 +1414,72 @@ const PDF = (() => {
       <span>${w.tipo==='contrato' ? w.horasSemana+' h/sem' : '$'+w.valorHora.toLocaleString('es-CL')+'/h'}</span>
       <span style="color:var(--text-muted)">${w.email}</span>
     </div>`).join('');
+
+  // ── Gestión de PINs ────────────────────────────────────
+  function renderPins(workers) {
+    document.getElementById('pins-list').innerHTML = workers.map(w => `
+      <div class="pin-row">
+        <span class="pin-nombre">${w.nombre}</span>
+        <span class="pin-estado ${w.tienePin ? 'asignado' : 'sin-pin'}" id="pin-estado-${w.email.replace(/[@.]/g,'_')}">
+          ${w.tienePin ? '✓ PIN asignado' : 'sin PIN'}
+        </span>
+        <div class="pin-input-wrap">
+          <input class="pin-input" type="text" maxlength="4" pattern="[0-9]{4}"
+            placeholder="0000" id="pin-input-${w.email.replace(/[@.]/g,'_')}"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+          <button class="btn-pin-save" onclick="guardarPin('${w.email}')">guardar</button>
+          <span class="pin-msg" id="pin-msg-${w.email.replace(/[@.]/g,'_')}"></span>
+        </div>
+      </div>`).join('');
+  }
+
+  // Cargar estado de PINs desde Apps Script
+  async function cargarPins() {
+    try {
+      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=getWorkers`);
+      const data = await r.json();
+      if (data.workers) renderPins(data.workers);
+    } catch(e) {
+      document.getElementById('pins-list').innerHTML = '<p class="empty-state">Error cargando PINs.</p>';
+    }
+  }
+  cargarPins();
+
+  window.guardarPin = async function(email) {
+    const key = email.replace(/[@.]/g,'_');
+    const input = document.getElementById(`pin-input-${key}`);
+    const msg = document.getElementById(`pin-msg-${key}`);
+    const estado = document.getElementById(`pin-estado-${key}`);
+    const pin = input.value.trim();
+
+    if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+      msg.style.color = 'var(--warning)';
+      msg.textContent = 'PIN debe ser 4 dígitos';
+      return;
+    }
+
+    msg.style.color = 'var(--text-muted)';
+    msg.textContent = 'guardando...';
+
+    try {
+      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=setPin&email=${encodeURIComponent(email)}&pin=${pin}`);
+      const data = await r.json();
+      if (data.success) {
+        msg.style.color = '#2d8a4e';
+        msg.textContent = '✓ guardado';
+        estado.textContent = '✓ PIN asignado';
+        estado.className = 'pin-estado asignado';
+        input.value = '';
+        setTimeout(() => msg.textContent = '', 3000);
+      } else {
+        msg.style.color = 'var(--warning)';
+        msg.textContent = data.error || 'Error';
+      }
+    } catch(e) {
+      msg.style.color = 'var(--warning)';
+      msg.textContent = 'Error de conexión';
+    }
+  };
 
   let contratoResumenes = [];
   document.getElementById('btn-load-contrato').addEventListener('click', () => {
