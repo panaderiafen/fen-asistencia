@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -583,11 +583,70 @@ button:active:not(:disabled) { transform: scale(0.98); }
   </header>
 
   <nav class="admin-tabs">
-    <button class="tab active" data-tab="dashboard">resumen</button>
+    <button class="tab" data-tab="dashboard">resumen</button>
+    <button class="tab" data-tab="registros">registros</button>
     <button class="tab" data-tab="contrato">contrato</button>
     <button class="tab" data-tab="bhe">honorarios</button>
     <button class="tab" data-tab="trabajadores">trabajadores</button>
   </nav>
+
+  <div id="tab-registros" class="tab-content" style="display:none;">
+    <div class="filter-row">
+      <select id="reg-worker"><option value="">todos los trabajadores</option></select>
+      <select id="reg-mes">
+        <option value="1">enero</option><option value="2">febrero</option>
+        <option value="3">marzo</option><option value="4">abril</option>
+        <option value="5">mayo</option><option value="6">junio</option>
+        <option value="7">julio</option><option value="8">agosto</option>
+        <option value="9">septiembre</option><option value="10">octubre</option>
+        <option value="11">noviembre</option><option value="12">diciembre</option>
+      </select>
+      <select id="reg-anio"></select>
+      <button id="btn-load-registros" class="btn-primary">ver</button>
+    </div>
+
+    <div class="worker-block" style="margin-bottom:1.5rem;">
+      <div class="worker-block-header">
+        <span class="worker-name">agregar turno olvidado</span>
+      </div>
+      <div class="filter-row" style="margin-bottom:0.5rem; flex-wrap:wrap;">
+        <select id="nuevo-worker" style="flex:2; min-width:140px;"><option value="">selecciona trabajador</option></select>
+        <input type="date" id="nuevo-fecha" style="flex:1; min-width:120px;" />
+        <input type="time" id="nuevo-entrada" style="flex:1; min-width:100px;" />
+        <input type="time" id="nuevo-salida" style="flex:1; min-width:100px;" />
+        <select id="nuevo-jornada" style="flex:1; min-width:110px;">
+          <option value="ordinaria">ordinaria</option>
+          <option value="feriado">feriado</option>
+        </select>
+        <button id="btn-agregar-turno" class="btn-primary">agregar</button>
+      </div>
+      <p id="nuevo-msg" style="font-size:13px; margin-top:0.5rem;"></p>
+    </div>
+
+    <div id="registros-list"></div>
+
+    <div id="modal-editar" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:white; border-radius:14px; padding:2rem; width:100%; max-width:440px; margin:1rem;">
+        <h3 style="font-size:18px; margin-bottom:1rem;">editar registro</h3>
+        <input type="hidden" id="edit-id" />
+        <div style="display:grid; gap:12px;">
+          <div><label class="label-sm">entrada</label><input type="time" id="edit-entrada" style="width:100%;" /></div>
+          <div><label class="label-sm">salida</label><input type="time" id="edit-salida" style="width:100%;" /></div>
+          <div><label class="label-sm">tipo de jornada</label>
+            <select id="edit-jornada" style="width:100%;">
+              <option value="ordinaria">ordinaria</option>
+              <option value="feriado">feriado</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:1.5rem;">
+          <button id="btn-guardar-edicion" class="btn-primary" style="flex:1;">guardar cambios</button>
+          <button id="btn-cancelar-edicion" class="btn-secondary" style="flex:1;">cancelar</button>
+        </div>
+        <p id="edit-msg" style="font-size:13px; margin-top:0.75rem;"></p>
+      </div>
+    </div>
+  </div>
 
   <div id="tab-dashboard" class="tab-content">
     <div id="dash-metrics" class="metric-grid" style="margin-bottom:1.5rem;"></div>
@@ -1559,6 +1618,146 @@ const PDF = (() => {
   document.getElementById('btn-pdf-bhe').addEventListener('click', () => {
     if (bheResumen) PDF.generarPDFBHE(bheResumen);
   });
+
+  // ── Pestaña Registros ──────────────────────────────────
+  const regAnioSel = document.getElementById('reg-anio');
+  years.forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; regAnioSel.appendChild(o); });
+  regAnioSel.value = currentYear;
+  document.getElementById('reg-mes').value = new Date().getMonth() + 1;
+
+  // Poblar selector de trabajadores en filtro y en nuevo turno
+  const regWorkerSel = document.getElementById('reg-worker');
+  const nuevoWorkerSel = document.getElementById('nuevo-worker');
+  allWorkers.forEach(w => {
+    const o1 = document.createElement('option'); o1.value = w.email; o1.textContent = w.nombre; regWorkerSel.appendChild(o1);
+    const o2 = document.createElement('option'); o2.value = w.email; o2.textContent = w.nombre; nuevoWorkerSel.appendChild(o2);
+  });
+
+  // Cargar registros
+  document.getElementById('btn-load-registros').addEventListener('click', async () => {
+    const email = document.getElementById('reg-worker').value;
+    const mes = document.getElementById('reg-mes').value;
+    const anio = document.getElementById('reg-anio').value;
+    document.getElementById('registros-list').innerHTML = '<p class="empty-state">cargando...</p>';
+
+    try {
+      let url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=getRegistros&mes=${mes}&anio=${anio}`;
+      if (email) url += `&email=${encodeURIComponent(email)}`;
+      const r = await fetch(url);
+      const data = await r.json();
+
+      if (!data.registros || data.registros.length === 0) {
+        document.getElementById('registros-list').innerHTML = '<p class="empty-state">no hay registros para este período.</p>';
+        return;
+      }
+
+      document.getElementById('registros-list').innerHTML = data.registros.map(rec => `
+        <div class="record-row ${rec.tipoJornada==='feriado'?'record-feriado':''}" style="flex-wrap:wrap; gap:8px;">
+          <span class="record-date" style="min-width:100px;">${rec.fecha}</span>
+          <span style="font-weight:500; min-width:100px;">${rec.nombre}</span>
+          <span class="record-times">${rec.entrada} → ${rec.salida || '<em>en curso</em>'}</span>
+          <span class="record-hours">${rec.horasTrabajadas ? rec.horasTrabajadas+' h' : '—'}</span>
+          ${rec.tipoJornada==='feriado'?'<span class="badge-feriado">feriado</span>':''}
+          <span style="font-size:11px; color:var(--text-muted); flex-basis:100%;">
+            ${rec.ingresadoPor !== 'trabajador' ? '✏️ '+rec.ingresadoPor : '👤 ingresado por '+rec.nombre}
+          </span>
+          <button class="btn-secondary" style="padding:4px 12px; font-size:12px;"
+            onclick="abrirEdicion('${rec.id}','${rec.entrada}','${rec.salida}','${rec.tipoJornada}')">
+            editar
+          </button>
+        </div>`).join('');
+    } catch(e) {
+      document.getElementById('registros-list').innerHTML = '<p class="empty-state">error cargando registros.</p>';
+    }
+  });
+
+  // Abrir modal de edición
+  window.abrirEdicion = function(id, entrada, salida, jornada) {
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-entrada').value = entrada;
+    document.getElementById('edit-salida').value = salida;
+    document.getElementById('edit-jornada').value = jornada;
+    document.getElementById('edit-msg').textContent = '';
+    document.getElementById('modal-editar').style.display = 'flex';
+  };
+
+  document.getElementById('btn-cancelar-edicion').addEventListener('click', () => {
+    document.getElementById('modal-editar').style.display = 'none';
+  });
+
+  document.getElementById('btn-guardar-edicion').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-guardar-edicion');
+    btn.disabled = true; btn.textContent = 'guardando...';
+    const id = document.getElementById('edit-id').value;
+    const entrada = document.getElementById('edit-entrada').value;
+    const salida = document.getElementById('edit-salida').value;
+    const jornada = document.getElementById('edit-jornada').value;
+    const adminEmail = Auth.getUser().email;
+
+    try {
+      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=editarRegistro&id=${encodeURIComponent(id)}&entrada=${entrada}&salida=${salida}&jornada=${jornada}&adminEmail=${encodeURIComponent(adminEmail)}`);
+      const data = await r.json();
+      if (data.success) {
+        document.getElementById('edit-msg').style.color = '#2d8a4e';
+        document.getElementById('edit-msg').textContent = `✓ guardado · ${data.horas} h`;
+        setTimeout(() => {
+          document.getElementById('modal-editar').style.display = 'none';
+          document.getElementById('btn-load-registros').click();
+        }, 1500);
+      } else {
+        document.getElementById('edit-msg').style.color = 'var(--warning)';
+        document.getElementById('edit-msg').textContent = data.error || 'Error al guardar';
+      }
+    } catch(e) {
+      document.getElementById('edit-msg').textContent = 'Error de conexión';
+    }
+    btn.disabled = false; btn.textContent = 'guardar cambios';
+  });
+
+  // Agregar turno nuevo
+  document.getElementById('btn-agregar-turno').addEventListener('click', async () => {
+    const email = document.getElementById('nuevo-worker').value;
+    const fecha = document.getElementById('nuevo-fecha').value;
+    const entrada = document.getElementById('nuevo-entrada').value;
+    const salida = document.getElementById('nuevo-salida').value;
+    const jornada = document.getElementById('nuevo-jornada').value;
+    const msg = document.getElementById('nuevo-msg');
+
+    if (!email || !fecha || !entrada) {
+      msg.style.color = 'var(--warning)';
+      msg.textContent = 'completa trabajador, fecha y hora de entrada como mínimo.';
+      return;
+    }
+
+    const worker = allWorkers.find(w => w.email === email);
+    const adminEmail = Auth.getUser().email;
+    const btn = document.getElementById('btn-agregar-turno');
+    btn.disabled = true; btn.textContent = 'guardando...';
+
+    try {
+      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=agregarRegistro` +
+        `&email=${encodeURIComponent(email)}&nombre=${encodeURIComponent(worker.nombre)}` +
+        `&fecha=${fecha}&entrada=${entrada}&salida=${salida}&jornada=${jornada}` +
+        `&adminEmail=${encodeURIComponent(adminEmail)}`);
+      const data = await r.json();
+      if (data.success) {
+        msg.style.color = '#2d8a4e';
+        msg.textContent = `✓ turno agregado · ${data.horas ? data.horas+' h' : 'sin salida registrada'}`;
+        document.getElementById('nuevo-worker').value = '';
+        document.getElementById('nuevo-fecha').value = '';
+        document.getElementById('nuevo-entrada').value = '';
+        document.getElementById('nuevo-salida').value = '';
+      } else {
+        msg.style.color = 'var(--warning)';
+        msg.textContent = data.error || 'Error al agregar';
+      }
+    } catch(e) {
+      msg.style.color = 'var(--warning)';
+      msg.textContent = 'Error de conexión';
+    }
+    btn.disabled = false; btn.textContent = 'agregar';
+  });
+
 })();
 </script>
 </body>
