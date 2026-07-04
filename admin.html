@@ -1,6 +1,6 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="es">
-<head> 
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>fën · administrador</title>
@@ -929,11 +929,12 @@ const Reportes = (() => {
   // ─── Contrato fijo ────────────────────────────────────────
 
   function calcResumenContrato(worker, records, mes, anio) {
+    const mesPad = mes.toString().padStart(2, '0');
+    const prefix = anio + '-' + mesPad;
     const filtered = records.filter(r => {
       if (r.email !== worker.email) return false;
       if (!r.salida) return false;
-      const d = new Date(r.fecha);
-      return d.getMonth() + 1 === mes && d.getFullYear() === anio;
+      return r.fecha && r.fecha.startsWith(prefix);
     });
 
     // Agrupar por semana ISO
@@ -984,11 +985,12 @@ const Reportes = (() => {
   // ─── BHE ──────────────────────────────────────────────────
 
   function calcResumenBHE(worker, records, mes, anio) {
+    const mesPad = mes.toString().padStart(2, '0');
+    const prefix = anio + '-' + mesPad;
     const filtered = records.filter(r => {
       if (r.email !== worker.email) return false;
       if (!r.salida) return false;
-      const d = new Date(r.fecha);
-      return d.getMonth() + 1 === mes && d.getFullYear() === anio;
+      return r.fecha && r.fecha.startsWith(prefix);
     });
 
     const detalle = filtered.map(r => {
