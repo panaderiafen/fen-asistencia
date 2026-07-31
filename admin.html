@@ -667,7 +667,12 @@ button:active:not(:disabled) { transform: scale(0.98); }
   </div>
 
   <div id="tab-contrato" class="tab-content" style="display:none;">
-    <div class="filter-row">
+    <div class="filter-row" style="margin-bottom:0.5rem;">
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-muted);">
+        <input type="checkbox" id="contrato-rango-toggle" style="width:auto;" /> usar rango de fechas personalizado
+      </label>
+    </div>
+    <div class="filter-row" id="contrato-filtro-mes">
       <select id="contrato-worker"><option value="">todos</option></select>
       <select id="contrato-mes">
         <option value="1">enero</option><option value="2">febrero</option>
@@ -680,11 +685,27 @@ button:active:not(:disabled) { transform: scale(0.98); }
       <select id="contrato-anio"></select>
       <button id="btn-load-contrato" class="btn-primary">ver</button>
     </div>
+    <div class="filter-row" id="contrato-filtro-rango" style="display:none;">
+      <select id="contrato-worker-rango"><option value="">todos</option></select>
+      <input type="date" id="contrato-desde" />
+      <input type="date" id="contrato-hasta" />
+      <button id="btn-load-contrato-rango" class="btn-primary">ver</button>
+    </div>
     <div id="contrato-results"></div>
     <div class="pdf-actions" id="pdf-actions-contrato" style="display:none;">
       <button id="btn-pdf-individual" class="btn-secondary">PDF individual</button>
       <button id="btn-pdf-consolidado" class="btn-primary">PDF consolidado para contadora</button>
     </div>
+
+    <h2 class="section-title" style="margin-top:2rem;">agregar bono</h2>
+    <div class="filter-row">
+      <select id="bono-worker"></select>
+      <input type="number" id="bono-monto" placeholder="monto $" min="0" style="max-width:130px;" />
+      <input type="text" id="bono-concepto" placeholder="concepto (ej. bono producción)" />
+      <input type="date" id="bono-fecha" />
+      <button id="btn-agregar-bono" class="btn-primary">agregar</button>
+    </div>
+    <p id="bono-msg" style="font-size:13px; margin-top:6px;"></p>
   </div>
 
   <div id="tab-bhe" class="tab-content" style="display:none;">
@@ -839,7 +860,7 @@ const Sheets = (() => {
 
   // ─── Trabajadores ─────────────────────────────────────────
   async function getWorkers() {
-    const rows = await read('trabajadores!A2:H');
+    const rows = await read('trabajadores!A2:I');
     return rows.map(r => ({
       email:        r[0] || '',
       nombre:       r[1] || '',
@@ -848,6 +869,7 @@ const Sheets = (() => {
       valorHora:    parseFloat(r[4]) || 0,
       activo:       r[5] !== 'false',
       admin:        r[6] === 'true',
+      diasLaborales: r[8] || 'L-V',   // 'L-V' (lunes-viernes) | 'L-S' (lunes-sábado) — columna I
     }));
   }
 
@@ -904,6 +926,25 @@ const Sheets = (() => {
     return rows.map(r => ({ fecha: r[0], descripcion: r[1] || '' }));
   }
 
+  // ─── Bonos ────────────────────────────────────────────────
+  // Hoja "bonos": A=fecha, B=email, C=nombre, D=monto, E=concepto, F=agregadoPor
+  // (la hoja se crea una sola vez con el script de Apps Script "crearHojaBonos")
+  async function getBonos() {
+    const rows = await read('bonos!A2:F');
+    return rows.map(r => ({
+      fecha:        r[0] || '',
+      email:        r[1] || '',
+      nombre:       r[2] || '',
+      monto:        parseFloat(r[3]) || 0,
+      concepto:     r[4] || '',
+      agregadoPor:  r[5] || '',
+    }));
+  }
+
+  async function agregarBono({ email, nombre, monto, concepto, agregadoPor, fecha }) {
+    await append('bonos!A2:F', [[fecha, email, nombre, monto, concepto, agregadoPor]]);
+  }
+
   async function isFeriado(fecha) {
     const feriados = await getFeriados();
     return feriados.some(f => f.fecha === fecha);
@@ -928,6 +969,7 @@ const Sheets = (() => {
     getWorkers, getWorkerByEmail,
     getRecords, checkIn, checkOut, getOpenShift,
     getFeriados, isFeriado,
+    getBonos, agregarBono,
     formatDate, formatTime, pad,
   };
 })();
@@ -938,16 +980,18 @@ const Reportes = (() => {
 
   // ─── Contrato fijo ────────────────────────────────────────
 
-  function calcResumenContrato(worker, records, mes, anio) {
-    const mesPad = mes.toString().padStart(2, '0');
-    const prefix = anio + '-' + mesPad;
+  // Núcleo: calcula el resumen de un trabajador para cualquier rango de fechas [desde, hasta] (inclusive, 'YYYY-MM-DD').
+  // bonos y feriados son opcionales (arrays ya cargados desde Sheets.getBonos() / Sheets.getFeriados()).
+  function calcResumenContratoRango(worker, records, desde, hasta, bonos, feriados) {
     const filtered = records.filter(r => {
       if (r.email !== worker.email) return false;
       if (!r.salida) return false;
-      return r.fecha && r.fecha.startsWith(prefix);
+      return r.fecha && r.fecha >= desde && r.fecha <= hasta;
     });
 
-    // Agrupar por semana ISO
+    // Agrupar por semana ISO — las horas de feriado SÍ se incluyen en el total semanal,
+    // porque solo son "extras" cuando, sumadas, superan la jornada ordinaria semanal
+    // (criterio de la Dirección del Trabajo).
     const semanas = {};
     filtered.forEach(r => {
       const semana = getWeekKey(r.fecha);
@@ -969,9 +1013,28 @@ const Reportes = (() => {
 
     const horasOrdinarias = totalHoras - totalExtras;
 
+    // Desglose de horas trabajadas en feriado (fecha + horas), para que la contadora
+    // aplique el valor distinto que corresponde a esas horas.
+    const feriadosDetalle = filtered
+      .filter(r => r.tipoJornada === 'feriado')
+      .map(r => ({ fecha: r.fecha, horas: round2(parseFloat(r.horasTrabajadas) || 0) }));
+    const horasFeriado = round2(feriadosDetalle.reduce((s, f) => s + f.horas, 0));
+
+    // Inasistencias: días laborales esperados (según worker.diasLaborales) dentro del rango,
+    // sin un registro ese día. Se excluyen los feriados (asistir es opcional/especial) y
+    // los días futuros (aún no se puede saber si asistirá).
+    const feriadoFechas = new Set((feriados || []).map(f => f.fecha));
+    const diasConRegistro = new Set(filtered.map(r => r.fecha));
+    const inasistencias = diasEsperados(worker.diasLaborales, desde, hasta)
+      .filter(fecha => !diasConRegistro.has(fecha) && !feriadoFechas.has(fecha));
+
+    // Bonos asignados a este trabajador dentro del rango.
+    const bonosDetalle = (bonos || []).filter(b => b.email === worker.email && b.fecha >= desde && b.fecha <= hasta);
+    const bonosTotal = round0(bonosDetalle.reduce((s, b) => s + b.monto, 0));
+
     return {
       worker,
-      mes, anio,
+      desde, hasta,
       registros: filtered,
       semanas,
       totalHoras: round2(totalHoras),
@@ -979,7 +1042,39 @@ const Reportes = (() => {
       horasExtras: round2(totalExtras),
       horasContrato,
       diasTrabajados: filtered.length,
+      horasFeriado,
+      feriadosDetalle,
+      inasistencias,
+      bonosDetalle,
+      bonosTotal,
     };
+  }
+
+  // Conveniencia: mismo cálculo pero para un mes calendario completo.
+  function calcResumenContrato(worker, records, mes, anio, bonos, feriados) {
+    const mesPad = mes.toString().padStart(2, '0');
+    const desde = `${anio}-${mesPad}-01`;
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    const hasta = `${anio}-${mesPad}-${ultimoDia.toString().padStart(2, '0')}`;
+    const r = calcResumenContratoRango(worker, records, desde, hasta, bonos, feriados);
+    return { ...r, mes, anio };
+  }
+
+  // Lista de fechas 'YYYY-MM-DD' en que el trabajador debía asistir según su horario
+  // (L-V o L-S), acotado al rango y sin pasar del día de hoy.
+  function diasEsperados(diasLaborales, desde, hasta) {
+    const hoy = Sheets.formatDate(new Date());
+    const fin = hasta < hoy ? hasta : hoy;
+    const dias = [];
+    let d = new Date(desde + 'T12:00:00');
+    const dFin = new Date(fin + 'T12:00:00');
+    while (d <= dFin) {
+      const dow = d.getDay(); // 0=domingo … 6=sábado
+      const esLaboral = diasLaborales === 'L-S' ? (dow >= 1 && dow <= 6) : (dow >= 1 && dow <= 5);
+      if (esLaboral) dias.push(Sheets.formatDate(d));
+      d.setDate(d.getDate() + 1);
+    }
+    return dias;
   }
 
   function tieneExtrasActivas(worker, records) {
@@ -1039,9 +1134,14 @@ const Reportes = (() => {
 
   // ─── Consolidado contrato (para contadora) ─────────────────
 
-  function calcConsolidado(workers, records, mes, anio) {
+  function calcConsolidado(workers, records, mes, anio, bonos, feriados) {
     const contratos = workers.filter(w => w.tipo === 'contrato' && w.activo);
-    return contratos.map(w => calcResumenContrato(w, records, mes, anio));
+    return contratos.map(w => calcResumenContrato(w, records, mes, anio, bonos, feriados));
+  }
+
+  function calcConsolidadoRango(workers, records, desde, hasta, bonos, feriados) {
+    const contratos = workers.filter(w => w.tipo === 'contrato' && w.activo);
+    return contratos.map(w => calcResumenContratoRango(w, records, desde, hasta, bonos, feriados));
   }
 
   // ─── Helpers ──────────────────────────────────────────────
@@ -1065,8 +1165,11 @@ const Reportes = (() => {
 
   return {
     calcResumenContrato,
+    calcResumenContratoRango,
     calcResumenBHE,
     calcConsolidado,
+    calcConsolidadoRango,
+    diasEsperados,
     tieneExtrasActivas,
     nombreMes,
     getWeekKey,
@@ -1104,6 +1207,10 @@ const PDF = (() => {
   function amber() { return [186, 117, 23]; }
   function dark()  { return [40, 35, 30]; }
   function gray()  { return [100, 95, 90]; }
+  function fmtPesos(n) { return '$' + n.toLocaleString('es-CL'); }
+  function periodoLabel(r) {
+    return r.mes ? `${Reportes.nombreMes(r.mes)} ${r.anio}` : `${r.desde} al ${r.hasta}`;
+  }
 
   // ─── PDF individual contrato ───────────────────────────────
 
@@ -1113,36 +1220,90 @@ const PDF = (() => {
 
     headerFen(doc,
       `Resumen de horas — ${resumen.worker.nombre}`,
-      `${Reportes.nombreMes(resumen.mes)} ${resumen.anio} · Contrato`
+      `${periodoLabel(resumen)} · Contrato`
     );
 
     let y = 32;
 
-    // Tarjetas resumen
+    // Tarjetas resumen (2 filas de 4)
     const tarjetas = [
-      ['Horas contrato/semana', resumen.horasContrato + ' h'],
-      ['Total horas trabajadas', resumen.totalHoras + ' h'],
-      ['Horas ordinarias', resumen.horasOrdinarias + ' h'],
-      ['Horas extras', resumen.horasExtras + ' h'],
+      ['Horas contrato/sem', resumen.horasContrato + ' h'],
+      ['Total trabajadas', resumen.totalHoras + ' h'],
+      ['Ordinarias', resumen.horasOrdinarias + ' h'],
+      ['Extras', resumen.horasExtras + ' h'],
+      ['En feriado', resumen.horasFeriado + ' h'],
       ['Días trabajados', resumen.diasTrabajados],
+      ['Inasistencias', resumen.inasistencias.length],
+      ['Bonos', fmtPesos(resumen.bonosTotal)],
     ];
 
-    const colW = 38;
+    const colW = 44;
     tarjetas.forEach((t, i) => {
-      const x = 14 + i * (colW + 2);
+      const fila = Math.floor(i / 4);
+      const col = i % 4;
+      const x = 14 + col * (colW + 2);
+      const cy = y + fila * 20;
       doc.setFillColor(245, 240, 230);
-      doc.roundedRect(x, y, colW, 18, 2, 2, 'F');
+      doc.roundedRect(x, cy, colW, 18, 2, 2, 'F');
       doc.setFontSize(7);
       doc.setTextColor(...gray());
-      doc.text(t[0], x + colW / 2, y + 6, { align: 'center' });
+      doc.text(t[0], x + colW / 2, cy + 6, { align: 'center' });
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(...(i === 3 && resumen.horasExtras > 0 ? [180, 60, 30] : dark()));
-      doc.text(String(t[1]), x + colW / 2, y + 14, { align: 'center' });
+      const resaltar = (i === 3 && resumen.horasExtras > 0) || (i === 6 && resumen.inasistencias.length > 0);
+      doc.setTextColor(...(resaltar ? [180, 60, 30] : dark()));
+      doc.text(String(t[1]), x + colW / 2, cy + 14, { align: 'center' });
       doc.setFont('helvetica', 'normal');
     });
 
-    y += 26;
+    y += 46;
+
+    // Feriados trabajados
+    if (resumen.feriadosDetalle.length) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...amber());
+      doc.text('Feriados trabajados (valor distinto)', 14, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...dark());
+      y += 5;
+      doc.setFontSize(8);
+      doc.text(resumen.feriadosDetalle.map(f => `${f.fecha} (${f.horas} h)`).join('  ·  '), 14, y, { maxWidth: 182 });
+      y += 8;
+    }
+
+    // Inasistencias
+    if (resumen.inasistencias.length) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 60, 30);
+      doc.text('Inasistencias', 14, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...dark());
+      y += 5;
+      doc.setFontSize(8);
+      doc.text(resumen.inasistencias.join('  ·  '), 14, y, { maxWidth: 182 });
+      y += 8;
+    }
+
+    // Bonos
+    if (resumen.bonosDetalle.length) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...amber());
+      doc.text(`Bonos del período (total ${fmtPesos(resumen.bonosTotal)})`, 14, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...dark());
+      y += 5;
+      doc.setFontSize(8);
+      resumen.bonosDetalle.forEach(b => {
+        doc.text(`${b.fecha} · ${fmtPesos(b.monto)} · ${b.concepto}`, 14, y);
+        y += 4.5;
+      });
+      y += 3;
+    }
+
+    if (y > 260) { doc.addPage(); y = 20; }
 
     // Detalle por semana
     Object.entries(resumen.semanas).forEach(([semana, data]) => {
@@ -1195,18 +1356,21 @@ const PDF = (() => {
     });
 
     footer(doc, 1, 1);
-    doc.save(`fen_horas_${resumen.worker.nombre.replace(/ /g,'_')}_${resumen.mes}_${resumen.anio}.pdf`);
+    const sufijo = resumen.mes ? `${resumen.mes}_${resumen.anio}` : `${resumen.desde}_a_${resumen.hasta}`;
+    doc.save(`fen_horas_${resumen.worker.nombre.replace(/ /g,'_')}_${sufijo}.pdf`);
   }
 
   // ─── PDF consolidado contrato (para contadora) ─────────────
 
-  function generarPDFConsolidado(resumenes, mes, anio) {
+  // `periodo` es { mes, anio } para mes calendario, o { desde, hasta } para rango personalizado.
+  function generarPDFConsolidado(resumenes, periodo) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     let pageNum = 1;
+    const label = periodo.mes ? `${Reportes.nombreMes(periodo.mes)} ${periodo.anio}` : `${periodo.desde} al ${periodo.hasta}`;
 
     headerFen(doc,
-      `Consolidado de horas — ${Reportes.nombreMes(mes)} ${anio}`,
+      `Consolidado de horas — ${label}`,
       `Trabajadores con contrato · fën`
     );
 
@@ -1221,12 +1385,12 @@ const PDF = (() => {
     doc.setTextColor(...dark());
     y += 6;
 
-    const headers = ['Trabajador', 'H. contrato/sem', 'H. trabajadas', 'H. ordinarias', 'H. extras', 'Días'];
-    const colW = [50, 28, 28, 28, 22, 16];
+    const headers = ['Trabajador', 'H.contrato', 'H.trabaj.', 'H.ordin.', 'H.extras', 'H.feriado', 'Inasist.', 'Bonos', 'Días'];
+    const colW = [32, 18, 18, 18, 16, 16, 14, 22, 12];
     doc.setFillColor(40, 35, 30);
     doc.rect(14, y, 182, 7, 'F');
     doc.setTextColor(245, 235, 215);
-    doc.setFontSize(8);
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'bold');
     let cx = 16;
     headers.forEach((h, i) => { doc.text(h, cx, y + 5); cx += colW[i]; });
@@ -1239,10 +1403,11 @@ const PDF = (() => {
       doc.setTextColor(...dark());
       cx = 16;
       const vals = [r.worker.nombre, r.horasContrato + ' h', r.totalHoras + ' h',
-                    r.horasOrdinarias + ' h', r.horasExtras + ' h', r.diasTrabajados];
+                    r.horasOrdinarias + ' h', r.horasExtras + ' h', r.horasFeriado + ' h',
+                    r.inasistencias.length, fmtPesos(r.bonosTotal), r.diasTrabajados];
       vals.forEach((v, i) => {
-        if (i === 4 && r.horasExtras > 0) doc.setTextColor(180, 60, 30);
-        doc.setFontSize(8);
+        if ((i === 4 && r.horasExtras > 0) || (i === 6 && r.inasistencias.length > 0)) doc.setTextColor(180, 60, 30);
+        doc.setFontSize(7);
         doc.text(String(v), cx, y + 5);
         doc.setTextColor(...dark());
         cx += colW[i];
@@ -1254,7 +1419,7 @@ const PDF = (() => {
 
     // Detalle por trabajador
     resumenes.forEach(r => {
-      if (y > 240) { doc.addPage(); pageNum++; y = 20; }
+      if (y > 230) { doc.addPage(); pageNum++; y = 20; }
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...amber());
@@ -1265,6 +1430,28 @@ const PDF = (() => {
       doc.text(`${r.totalHoras} h trabajadas · ${r.horasExtras} h extras · ${r.diasTrabajados} días`, 70, y);
       doc.setTextColor(...dark());
       y += 5;
+
+      if (r.feriadosDetalle.length) {
+        doc.setFontSize(7);
+        doc.setTextColor(180, 60, 30);
+        doc.text(`Feriados trabajados: ${r.feriadosDetalle.map(f=>`${f.fecha} (${f.horas} h)`).join(', ')}`, 14, y, { maxWidth: 182 });
+        doc.setTextColor(...dark());
+        y += 5;
+      }
+      if (r.inasistencias.length) {
+        doc.setFontSize(7);
+        doc.setTextColor(180, 60, 30);
+        doc.text(`Inasistencias: ${r.inasistencias.join(', ')}`, 14, y, { maxWidth: 182 });
+        doc.setTextColor(...dark());
+        y += 5;
+      }
+      if (r.bonosDetalle.length) {
+        doc.setFontSize(7);
+        doc.setTextColor(...amber());
+        doc.text(`Bonos (${fmtPesos(r.bonosTotal)}): ${r.bonosDetalle.map(b=>`${b.fecha} ${fmtPesos(b.monto)} ${b.concepto}`).join(', ')}`, 14, y, { maxWidth: 182 });
+        doc.setTextColor(...dark());
+        y += 5;
+      }
 
       const dh = ['Fecha', 'Entrada', 'Salida', 'Jornada', 'Horas'];
       const dw = [35, 25, 25, 40, 20];
@@ -1293,7 +1480,8 @@ const PDF = (() => {
     });
 
     footer(doc, pageNum, pageNum);
-    doc.save(`fen_consolidado_contrato_${mes}_${anio}.pdf`);
+    const sufijo = periodo.mes ? `${periodo.mes}_${periodo.anio}` : `${periodo.desde}_a_${periodo.hasta}`;
+    doc.save(`fen_consolidado_contrato_${sufijo}.pdf`);
   }
 
   // ─── PDF BHE ──────────────────────────────────────────────
@@ -1423,7 +1611,9 @@ const PDF = (() => {
     `https://docs.google.com/spreadsheets/d/${FEN_CONFIG.SPREADSHEET_ID}`;
 
   await Sheets.getToken();
-  const [allRecords, allWorkers] = await Promise.all([Sheets.getRecords(), Sheets.getWorkers()]);
+  const [allRecords, allWorkers, allBonos, allFeriados] = await Promise.all([
+    Sheets.getRecords(), Sheets.getWorkers(), Sheets.getBonos(), Sheets.getFeriados()
+  ]);
 
   const years = [...new Set(allRecords.map(r => new Date(r.fecha).getFullYear()))];
   const currentYear = new Date().getFullYear();
@@ -1440,6 +1630,15 @@ const PDF = (() => {
   const bhes = allWorkers.filter(w => w.tipo === 'BHE' && w.activo);
   contratos.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('contrato-worker').appendChild(o); });
   bhes.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('bhe-worker').appendChild(o); });
+  contratos.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('contrato-worker-rango').appendChild(o); });
+  contratos.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('bono-worker').appendChild(o); });
+
+  // Toggle mes calendario / rango personalizado
+  document.getElementById('contrato-rango-toggle').addEventListener('change', (e) => {
+    document.getElementById('contrato-filtro-mes').style.display = e.target.checked ? 'none' : 'flex';
+    document.getElementById('contrato-filtro-rango').style.display = e.target.checked ? 'flex' : 'none';
+  });
+  document.getElementById('bono-fecha').value = Sheets.formatDate(new Date());
 
   document.getElementById('contrato-mes').value = new Date().getMonth() + 1;
   document.getElementById('bhe-mes').value = new Date().getMonth() + 1;
@@ -1553,45 +1752,108 @@ const PDF = (() => {
   };
 
   let contratoResumenes = [];
-  document.getElementById('btn-load-contrato').addEventListener('click', () => {
-    const emailFil = document.getElementById('contrato-worker').value;
-    const mes = parseInt(document.getElementById('contrato-mes').value);
-    const anio = parseInt(document.getElementById('contrato-anio').value);
-    const workers = emailFil ? contratos.filter(w=>w.email===emailFil) : contratos;
-    contratoResumenes = Reportes.calcConsolidado(workers, allRecords, mes, anio);
-    document.getElementById('contrato-results').innerHTML = contratoResumenes.map(r => `
+  const fmtPesos = n => '$' + n.toLocaleString('es-CL');
+
+  function renderContratoResultados(resumenes) {
+    contratoResumenes = resumenes;
+    document.getElementById('contrato-results').innerHTML = resumenes.map(r => `
       <div class="worker-block">
         <div class="worker-block-header">
           <span class="worker-name">${r.worker.nombre}</span>
           <span class="${r.horasExtras>0?'badge-extra':'badge-ok'}">${r.horasExtras>0?'⚡ '+r.horasExtras+' h extras':'sin extras'}</span>
         </div>
         <div class="metric-grid mini">
+          <div class="metric-card"><div class="metric-label">horas contrato/sem</div><div class="metric-value">${r.horasContrato} h</div></div>
           <div class="metric-card"><div class="metric-label">horas trabajadas</div><div class="metric-value">${r.totalHoras} h</div></div>
           <div class="metric-card"><div class="metric-label">ordinarias</div><div class="metric-value">${r.horasOrdinarias} h</div></div>
           <div class="metric-card"><div class="metric-label">extras</div><div class="metric-value ${r.horasExtras>0?'text-warning':''}">${r.horasExtras} h</div></div>
-          <div class="metric-card"><div class="metric-label">días</div><div class="metric-value">${r.diasTrabajados}</div></div>
+          <div class="metric-card"><div class="metric-label">en feriado</div><div class="metric-value">${r.horasFeriado} h</div></div>
+          <div class="metric-card"><div class="metric-label">inasistencias</div><div class="metric-value ${r.inasistencias.length>0?'text-warning':''}">${r.inasistencias.length}</div></div>
+          <div class="metric-card"><div class="metric-label">bonos</div><div class="metric-value">${fmtPesos(r.bonosTotal)}</div></div>
         </div>
-        <table class="detail-table">
+        ${r.feriadosDetalle.length ? `
+        <p class="hint-text" style="margin-top:0.75rem;"><strong>feriados trabajados</strong> (valor distinto — ver tarifa festivos):</p>
+        <div class="record-row-list">${r.feriadosDetalle.map(f=>`<span class="badge-feriado" style="margin:2px 4px 2px 0; display:inline-block;">${f.fecha} · ${f.horas} h</span>`).join('')}</div>` : ''}
+        ${r.inasistencias.length ? `
+        <p class="hint-text" style="margin-top:0.75rem;"><strong>inasistencias</strong>:</p>
+        <div class="record-row-list">${r.inasistencias.map(f=>`<span class="badge-extra" style="margin:2px 4px 2px 0; display:inline-block;">${f}</span>`).join('')}</div>` : ''}
+        ${r.bonosDetalle.length ? `
+        <p class="hint-text" style="margin-top:0.75rem;"><strong>bonos del período</strong>:</p>
+        <div class="record-row-list">${r.bonosDetalle.map(b=>`<span class="badge-ok" style="margin:2px 4px 2px 0; display:inline-block;">${b.fecha} · ${fmtPesos(b.monto)} · ${b.concepto}</span>`).join('')}</div>` : ''}
+        <table class="detail-table" style="margin-top:0.75rem;">
           <thead><tr><th>fecha</th><th>entrada</th><th>salida</th><th>jornada</th><th>horas</th></tr></thead>
           <tbody>${r.registros.map(rec=>`<tr class="${rec.tipoJornada==='feriado'?'row-feriado':''}">
             <td>${rec.fecha}</td><td>${rec.entrada}</td><td>${rec.salida||'—'}</td>
             <td>${rec.tipoJornada}</td><td>${rec.horasTrabajadas}</td></tr>`).join('')}</tbody>
         </table>
       </div>`).join('');
-    document.getElementById('pdf-actions-contrato').style.display = contratoResumenes.length ? 'flex' : 'none';
+    document.getElementById('pdf-actions-contrato').style.display = resumenes.length ? 'flex' : 'none';
+  }
+
+  document.getElementById('btn-load-contrato').addEventListener('click', () => {
+    const emailFil = document.getElementById('contrato-worker').value;
+    const mes = parseInt(document.getElementById('contrato-mes').value);
+    const anio = parseInt(document.getElementById('contrato-anio').value);
+    const workers = emailFil ? contratos.filter(w=>w.email===emailFil) : contratos;
+    renderContratoResultados(Reportes.calcConsolidado(workers, allRecords, mes, anio, allBonos, allFeriados));
+  });
+
+  document.getElementById('btn-load-contrato-rango').addEventListener('click', () => {
+    const emailFil = document.getElementById('contrato-worker-rango').value;
+    const desde = document.getElementById('contrato-desde').value;
+    const hasta = document.getElementById('contrato-hasta').value;
+    if (!desde || !hasta) { alert('Selecciona fecha de inicio y de término.'); return; }
+    const workers = emailFil ? contratos.filter(w=>w.email===emailFil) : contratos;
+    renderContratoResultados(Reportes.calcConsolidadoRango(workers, allRecords, desde, hasta, allBonos, allFeriados));
+  });
+
+  // ── Agregar bono ────────────────────────────────────────
+  document.getElementById('btn-agregar-bono').addEventListener('click', async () => {
+    const email = document.getElementById('bono-worker').value;
+    const monto = parseFloat(document.getElementById('bono-monto').value);
+    const concepto = document.getElementById('bono-concepto').value.trim();
+    const fecha = document.getElementById('bono-fecha').value;
+    const msg = document.getElementById('bono-msg');
+    const btn = document.getElementById('btn-agregar-bono');
+
+    if (!email || !monto || monto <= 0 || !concepto || !fecha) {
+      msg.style.color = 'var(--warning)';
+      msg.textContent = 'completa trabajador, monto, concepto y fecha.';
+      return;
+    }
+
+    const worker = contratos.find(w => w.email === email);
+    btn.disabled = true; btn.textContent = 'guardando...';
+    try {
+      await Sheets.agregarBono({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: Auth.getUser().email });
+      allBonos.push({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: Auth.getUser().email });
+      msg.style.color = '#2d8a4e';
+      msg.textContent = `✓ bono agregado a ${worker.nombre}`;
+      document.getElementById('bono-monto').value = '';
+      document.getElementById('bono-concepto').value = '';
+    } catch (e) {
+      msg.style.color = 'var(--warning)';
+      msg.textContent = 'Error al guardar el bono.';
+    }
+    btn.disabled = false; btn.textContent = 'agregar';
   });
 
   document.getElementById('btn-pdf-individual').addEventListener('click', () => {
-    const emailFil = document.getElementById('contrato-worker').value;
+    const esRango = document.getElementById('contrato-rango-toggle').checked;
+    const emailFil = esRango
+      ? document.getElementById('contrato-worker-rango').value
+      : document.getElementById('contrato-worker').value;
     if (!emailFil) { alert('Selecciona un trabajador para el PDF individual.'); return; }
     const r = contratoResumenes.find(r=>r.worker.email===emailFil);
     if (r) PDF.generarPDFContrato(r);
   });
 
   document.getElementById('btn-pdf-consolidado').addEventListener('click', () => {
-    const mes = parseInt(document.getElementById('contrato-mes').value);
-    const anio = parseInt(document.getElementById('contrato-anio').value);
-    PDF.generarPDFConsolidado(contratoResumenes, mes, anio);
+    const esRango = document.getElementById('contrato-rango-toggle').checked;
+    const periodo = esRango
+      ? { desde: document.getElementById('contrato-desde').value, hasta: document.getElementById('contrato-hasta').value }
+      : { mes: parseInt(document.getElementById('contrato-mes').value), anio: parseInt(document.getElementById('contrato-anio').value) };
+    PDF.generarPDFConsolidado(contratoResumenes, periodo);
   });
 
   let bheResumen = null;
