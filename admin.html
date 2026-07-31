@@ -1417,9 +1417,9 @@ const PDF = (() => {
 
     y += 10;
 
-    // Detalle por trabajador
+    // Detalle por trabajador (resumen semanal, sin el detalle día a día)
     resumenes.forEach(r => {
-      if (y > 230) { doc.addPage(); pageNum++; y = 20; }
+      if (y > 240) { doc.addPage(); pageNum++; y = 20; }
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...amber());
@@ -1453,26 +1453,29 @@ const PDF = (() => {
         y += 5;
       }
 
-      const dh = ['Fecha', 'Entrada', 'Salida', 'Jornada', 'Horas'];
-      const dw = [35, 25, 25, 40, 20];
+      // Tabla semanal: horas trabajadas y horas extras por semana
+      const sh = ['Semana', 'Horas trabajadas', 'Horas extras'];
+      const sw = [40, 45, 40];
       doc.setFillColor(225, 215, 195);
-      doc.rect(14, y, 145, 6, 'F');
+      doc.rect(14, y, 125, 6, 'F');
       doc.setFontSize(7);
       doc.setFont('helvetica', 'bold');
       cx = 16;
-      dh.forEach((h, i) => { doc.text(h, cx, y + 4); cx += dw[i]; });
+      sh.forEach((h, i) => { doc.text(h, cx, y + 4); cx += sw[i]; });
       doc.setFont('helvetica', 'normal');
       y += 6;
 
-      r.registros.forEach((rec, idx) => {
+      const semanasOrdenadas = Object.entries(r.semanas).sort(([a],[b]) => a.localeCompare(b));
+      semanasOrdenadas.forEach(([semana, data], idx) => {
         if (y > 275) { doc.addPage(); pageNum++; y = 20; }
-        if (idx % 2 === 0) { doc.setFillColor(250, 247, 242); doc.rect(14, y, 145, 5, 'F'); }
+        if (idx % 2 === 0) { doc.setFillColor(250, 247, 242); doc.rect(14, y, 125, 5, 'F'); }
+        const extras = data.horas > r.horasContrato ? data.horas - r.horasContrato : 0;
         cx = 16;
-        const esFeriado = rec.tipoJornada === 'feriado';
-        if (esFeriado) doc.setTextColor(180, 60, 30);
         doc.setFontSize(7);
-        [rec.fecha, rec.entrada, rec.salida || '—', esFeriado ? 'Feriado' : 'Ordinaria', String(rec.horasTrabajadas)]
-          .forEach((v, i) => { doc.text(v, cx, y + 4); cx += dw[i]; });
+        doc.text(semana, cx, y + 4); cx += sw[0];
+        doc.text(data.horas.toFixed(2) + ' h', cx, y + 4); cx += sw[1];
+        if (extras > 0) doc.setTextColor(180, 60, 30);
+        doc.text(extras.toFixed(2) + ' h', cx, y + 4);
         doc.setTextColor(...dark());
         y += 5;
       });
