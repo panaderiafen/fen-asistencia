@@ -1385,8 +1385,8 @@ const PDF = (() => {
     doc.setTextColor(...dark());
     y += 6;
 
-    const headers = ['Trabajador', 'H.contrato', 'H.trabaj.', 'H.ordin.', 'H.extras', 'H.feriado', 'Inasist.', 'Bonos', 'Días'];
-    const colW = [32, 18, 18, 18, 16, 16, 14, 22, 12];
+    const headers = ['Trabajador', 'H.contrato', 'H.trabaj.', 'H.ordin.', 'H.extras', 'H.feriado', 'Inasist.', 'Bonos'];
+    const colW = [40, 18, 18, 18, 16, 16, 14, 26];
     doc.setFillColor(40, 35, 30);
     doc.rect(14, y, 182, 7, 'F');
     doc.setTextColor(245, 235, 215);
@@ -1404,7 +1404,7 @@ const PDF = (() => {
       cx = 16;
       const vals = [r.worker.nombre, r.horasContrato + ' h', r.totalHoras + ' h',
                     r.horasOrdinarias + ' h', r.horasExtras + ' h', r.horasFeriado + ' h',
-                    r.inasistencias.length, fmtPesos(r.bonosTotal), r.diasTrabajados];
+                    r.inasistencias.length, fmtPesos(r.bonosTotal)];
       vals.forEach((v, i) => {
         if ((i === 4 && r.horasExtras > 0) || (i === 6 && r.inasistencias.length > 0)) doc.setTextColor(180, 60, 30);
         doc.setFontSize(7);
@@ -1427,7 +1427,7 @@ const PDF = (() => {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...gray());
-      doc.text(`${r.totalHoras} h trabajadas · ${r.horasExtras} h extras · ${r.diasTrabajados} días`, 70, y);
+      doc.text(`${r.totalHoras} h trabajadas · ${r.horasExtras} h extras`, 70, y);
       doc.setTextColor(...dark());
       y += 5;
 
