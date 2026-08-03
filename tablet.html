@@ -713,8 +713,11 @@ document.getElementById('btn-confirmar-solicitud').addEventListener('click', asy
   const btn = document.getElementById('btn-confirmar-solicitud');
   btn.disabled = true;
   btn.textContent = 'enviando...';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
-    const r = await fetch(`${API}?action=solicitarEstado&email=${encodeURIComponent(currentWorker.email)}`);
+    const r = await fetch(`${API}?action=solicitarEstado&email=${encodeURIComponent(currentWorker.email)}`, { signal: controller.signal });
+    clearTimeout(timeoutId);
     const data = await r.json();
     if (data.success) {
       document.getElementById('confirm-icon').textContent = '📬';
@@ -737,7 +740,8 @@ document.getElementById('btn-confirmar-solicitud').addEventListener('click', asy
       btn.textContent = 'enviar solicitud';
     }
   } catch(e) {
-    alert('Error de conexión');
+    clearTimeout(timeoutId);
+    alert(e.name === 'AbortError' ? 'El servidor tardó demasiado en responder. Intenta de nuevo.' : 'Error de conexión');
     btn.disabled = false;
     btn.textContent = 'enviar solicitud';
   }
