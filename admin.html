@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>fën · administrador</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
 /* style.css — fën asistencia */
@@ -58,13 +57,6 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.login-card #google-btn {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  margin-top: 0.5rem;
 }
 
 .brand {
@@ -578,7 +570,11 @@ button:active:not(:disabled) { transform: scale(0.98); }
   <div class="login-card">
     <img src="logosecundario.jpg" alt="fën" style="width:160px; margin:0 auto 0.5rem; display:block;" />
     <p class="brand-sub">panel de administración</p>
-    <div id="google-btn"></div>
+    <form id="login-form" style="width:100%; margin-top:0.75rem; display:flex; flex-direction:column; gap:0.6rem;">
+      <input type="password" id="login-password" placeholder="clave de acceso" autocomplete="current-password"
+        style="width:100%; padding:0.7rem 0.9rem; border-radius:8px; border:1.5px solid #d8cdb8; font-size:15px; font-family:inherit;" />
+      <button type="submit" class="btn-primary" style="width:100%;">entrar</button>
+    </form>
     <p id="login-error" class="error-msg" style="display:none;"></p>
   </div>
 </div>
@@ -744,91 +740,34 @@ button:active:not(:disabled) { transform: scale(0.98); }
 // auth.js — Google Sign-In + control de acceso por correo
 
 const Auth = (() => {
-  let currentUser = null;
-  let workerProfile = null;
+  const STORAGE_KEY = 'fen_admin_auth';
+  let authenticated = sessionStorage.getItem(STORAGE_KEY) === 'true';
 
-  async function init() {
-    return new Promise((resolve) => {
-      google.accounts.id.initialize({
-        client_id: FEN_CONFIG.GOOGLE_CLIENT_ID,
-        callback: async (response) => {
-          const payload = parseJwt(response.credential);
-          currentUser = {
-            email: payload.email,
-            name: payload.name,
-            picture: payload.picture,
-          };
-          workerProfile = await Sheets.getWorkerByEmail(currentUser.email);
-          resolve({ user: currentUser, profile: workerProfile });
-        },
-        auto_select: false,
-      });
-      google.accounts.id.renderButton(document.getElementById('google-btn'), {
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        locale: 'es',
-        width: 280,
-      });
-      google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          resolve({});
-        }
-      });
-    });
+  function login(password) {
+    if (password === FEN_CONFIG.ADMIN_PASSWORD) {
+      authenticated = true;
+      sessionStorage.setItem(STORAGE_KEY, 'true');
+      return true;
+    }
+    return false;
   }
 
-  function renderButton(containerId) {
-    // renderButton ahora se hace dentro de init()
-  }
-
-  function parseJwt(token) {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(decodeURIComponent(atob(base64).split('').map(c =>
-      '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
-  }
-
-  function getUser() { return currentUser; }
-  function getProfile() { return workerProfile; }
-  function isAdmin() {
-    if (!currentUser) return false;
-    if (currentUser.email === FEN_CONFIG.ADMIN_EMAIL) return true;
-    return workerProfile && workerProfile.admin === 'true';
-  }
-  function isLoggedIn() { return currentUser !== null; }
+  function isAdmin() { return authenticated; }
+  function isLoggedIn() { return authenticated; }
 
   function signOut() {
-    google.accounts.id.disableAutoSelect();
-    currentUser = null;
-    workerProfile = null;
+    authenticated = false;
+    sessionStorage.removeItem(STORAGE_KEY);
     window.location.reload();
   }
 
-  return { init, renderButton, getUser, getProfile, isAdmin, isLoggedIn, signOut };
+  return { login, isAdmin, isLoggedIn, signOut };
 })();
 
 // sheets.js — lectura y escritura en Google Sheets via API REST
 
 const Sheets = (() => {
   const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-  let accessToken = null;
-
-  // ─── Token OAuth ──────────────────────────────────────────
-  function setToken(token) { accessToken = token; }
-
-  async function getToken() {
-    return new Promise((resolve, reject) => {
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: FEN_CONFIG.GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/spreadsheets',
-        callback: (resp) => {
-          if (resp.error) reject(resp.error);
-          else { accessToken = resp.access_token; resolve(resp.access_token); }
-        },
-      });
-      client.requestAccessToken({ prompt: '' });
-    });
-  }
 
   // ─── Helpers ──────────────────────────────────────────────
   async function read(range) {
@@ -836,26 +775,6 @@ const Sheets = (() => {
     const r = await fetch(url);
     const d = await r.json();
     return d.values || [];
-  }
-
-  async function write(range, values) {
-    if (!accessToken) await getToken();
-    const url = `${BASE}/${FEN_CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-    await fetch(url, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values }),
-    });
-  }
-
-  async function append(range, values) {
-    if (!accessToken) await getToken();
-    const url = `${BASE}/${FEN_CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-    await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values }),
-    });
   }
 
   // ─── Trabajadores ─────────────────────────────────────────
@@ -942,7 +861,14 @@ const Sheets = (() => {
   }
 
   async function agregarBono({ email, nombre, monto, concepto, agregadoPor, fecha }) {
-    await append('bonos!A2:F', [[fecha, email, nombre, monto, concepto, agregadoPor]]);
+    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=agregarBono` +
+      `&email=${encodeURIComponent(email)}&nombre=${encodeURIComponent(nombre)}` +
+      `&monto=${encodeURIComponent(monto)}&concepto=${encodeURIComponent(concepto)}` +
+      `&fecha=${encodeURIComponent(fecha)}&agregadoPor=${encodeURIComponent(agregadoPor)}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data;
   }
 
   async function isFeriado(fecha) {
@@ -965,7 +891,6 @@ const Sheets = (() => {
   }
 
   return {
-    setToken, getToken,
     getWorkers, getWorkerByEmail,
     getRecords, checkIn, checkOut, getOpenShift,
     getFeriados, isFeriado,
@@ -1590,22 +1515,25 @@ const PDF = (() => {
 <script src="config.js"></script>
 <script>
 (async () => {
+  const loginForm = document.getElementById('login-form');
+  const loginError = document.getElementById('login-error');
+
   await new Promise(resolve => {
-    if (typeof google !== 'undefined') { resolve(); return; }
-    const interval = setInterval(() => {
-      if (typeof google !== 'undefined') { clearInterval(interval); resolve(); }
-    }, 100);
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const pass = document.getElementById('login-password').value;
+      if (Auth.login(pass)) {
+        resolve();
+      } else {
+        loginError.textContent = 'Clave incorrecta.';
+        loginError.style.display = 'block';
+        document.getElementById('login-password').value = '';
+      }
+    });
+
+    // Si ya había una sesión activa en este navegador (misma pestaña/sesión), entra directo.
+    if (Auth.isAdmin()) resolve();
   });
-
-  Auth.renderButton('google-btn');
-  const { user, profile } = await Auth.init().catch(() => ({}));
-  if (!user) return;
-
-  if (!Auth.isAdmin()) {
-    document.getElementById('login-error').textContent = 'Acceso restringido al administrador.';
-    document.getElementById('login-error').style.display = 'block';
-    return;
-  }
 
   document.getElementById('screen-login').style.display = 'none';
   document.getElementById('screen-app').style.display = 'block';
@@ -1613,7 +1541,6 @@ const PDF = (() => {
   document.getElementById('link-sheet').href =
     `https://docs.google.com/spreadsheets/d/${FEN_CONFIG.SPREADSHEET_ID}`;
 
-  await Sheets.getToken();
   const [allRecords, allWorkers, allBonos, allFeriados] = await Promise.all([
     Sheets.getRecords(), Sheets.getWorkers(), Sheets.getBonos(), Sheets.getFeriados()
   ]);
@@ -1828,8 +1755,8 @@ const PDF = (() => {
     const worker = contratos.find(w => w.email === email);
     btn.disabled = true; btn.textContent = 'guardando...';
     try {
-      await Sheets.agregarBono({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: Auth.getUser().email });
-      allBonos.push({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: Auth.getUser().email });
+      await Sheets.agregarBono({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: FEN_CONFIG.ADMIN_EMAIL });
+      allBonos.push({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: FEN_CONFIG.ADMIN_EMAIL });
       msg.style.color = '#2d8a4e';
       msg.textContent = `✓ bono agregado a ${worker.nombre}`;
       document.getElementById('bono-monto').value = '';
@@ -1969,7 +1896,7 @@ const PDF = (() => {
     const entrada = document.getElementById('edit-entrada').value;
     const salida = document.getElementById('edit-salida').value;
     const jornada = document.getElementById('edit-jornada').value;
-    const adminEmail = Auth.getUser().email;
+    const adminEmail = FEN_CONFIG.ADMIN_EMAIL;
 
     try {
       const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=editarRegistro&id=${encodeURIComponent(id)}&entrada=${entrada}&salida=${salida}&jornada=${jornada}&adminEmail=${encodeURIComponent(adminEmail)}`);
@@ -2007,7 +1934,7 @@ const PDF = (() => {
     }
 
     const worker = allWorkers.find(w => w.email === email);
-    const adminEmail = Auth.getUser().email;
+    const adminEmail = FEN_CONFIG.ADMIN_EMAIL;
     const btn = document.getElementById('btn-agregar-turno');
     btn.disabled = true; btn.textContent = 'guardando...';
 
