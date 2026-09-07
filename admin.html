@@ -706,7 +706,12 @@ button:active:not(:disabled) { transform: scale(0.98); }
   </div>
 
   <div id="tab-bhe" class="tab-content" style="display:none;">
-    <div class="filter-row">
+    <div class="filter-row" style="margin-bottom:0.5rem;">
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text-muted);">
+        <input type="checkbox" id="bhe-rango-toggle" style="width:auto;" /> usar rango de fechas personalizado
+      </label>
+    </div>
+    <div class="filter-row" id="bhe-filtro-mes">
       <select id="bhe-worker"><option value="">selecciona un trabajador</option></select>
       <select id="bhe-mes">
         <option value="1">enero</option><option value="2">febrero</option>
@@ -718,6 +723,12 @@ button:active:not(:disabled) { transform: scale(0.98); }
       </select>
       <select id="bhe-anio"></select>
       <button id="btn-load-bhe" class="btn-primary">ver</button>
+    </div>
+    <div class="filter-row" id="bhe-filtro-rango" style="display:none;">
+      <select id="bhe-worker-rango"><option value="">selecciona un trabajador</option></select>
+      <input type="date" id="bhe-desde" />
+      <input type="date" id="bhe-hasta" />
+      <button id="btn-load-bhe-rango" class="btn-primary">ver</button>
     </div>
     <div id="bhe-results"></div>
     <div class="pdf-actions" id="pdf-actions-bhe" style="display:none;">
@@ -1015,13 +1026,11 @@ const Reportes = (() => {
 
   // ─── BHE ──────────────────────────────────────────────────
 
-  function calcResumenBHE(worker, records, mes, anio) {
-    const mesPad = mes.toString().padStart(2, '0');
-    const prefix = anio + '-' + mesPad;
+  function calcResumenBHERango(worker, records, desde, hasta) {
     const filtered = records.filter(r => {
       if (r.email !== worker.email) return false;
       if (!r.salida) return false;
-      return r.fecha && r.fecha.startsWith(prefix);
+      return r.fecha && r.fecha >= desde && r.fecha <= hasta;
     });
 
     const detalle = filtered.map(r => {
@@ -1047,7 +1056,7 @@ const Reportes = (() => {
 
     return {
       worker,
-      mes, anio,
+      desde, hasta,
       detalle,
       totalHoras,
       diasTrabajados: detalle.length,
@@ -1056,6 +1065,15 @@ const Reportes = (() => {
       liquido,
       porcentajeDescuento: FEN_CONFIG.BHE_DESCUENTO * 100,
     };
+  }
+
+  function calcResumenBHE(worker, records, mes, anio) {
+    const mesPad = mes.toString().padStart(2, '0');
+    const desde = anio + '-' + mesPad + '-01';
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    const hasta = anio + '-' + mesPad + '-' + ultimoDia.toString().padStart(2, '0');
+    const r = calcResumenBHERango(worker, records, desde, hasta);
+    return { ...r, mes, anio };
   }
 
   // ─── Consolidado contrato (para contadora) ─────────────────
@@ -1093,6 +1111,7 @@ const Reportes = (() => {
     calcResumenContrato,
     calcResumenContratoRango,
     calcResumenBHE,
+    calcResumenBHERango,
     calcConsolidado,
     calcConsolidadoRango,
     diasEsperados,
@@ -1505,7 +1524,7 @@ const PDF = (() => {
 
     headerFen(doc,
       `Boleta de Honorarios — ${resumen.worker.nombre}`,
-      `${Reportes.nombreMes(resumen.mes)} ${resumen.anio} · BHE`
+      `${periodoLabel(resumen)} · BHE`
     );
 
     let y = 32;
@@ -1591,7 +1610,8 @@ const PDF = (() => {
     doc.text(fmt(resumen.liquido), 180, y + 5, { align: 'right' });
 
     footer(doc, 1, 1);
-    doc.save(`fen_BHE_${resumen.worker.nombre.replace(/ /g,'_')}_${resumen.mes}_${resumen.anio}.pdf`);
+    const sufijoBHE = resumen.mes ? `${resumen.mes}_${resumen.anio}` : `${resumen.desde}_a_${resumen.hasta}`;
+    doc.save(`fen_BHE_${resumen.worker.nombre.replace(/ /g,'_')}_${sufijoBHE}.pdf`);
   }
 
   return { generarPDFContrato, generarPDFConsolidado, generarPDFLiquidaciones, generarPDFBHE };
@@ -1645,6 +1665,7 @@ const PDF = (() => {
   const bhes = allWorkers.filter(w => w.tipo === 'BHE' && w.activo);
   contratos.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('contrato-worker').appendChild(o); });
   bhes.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('bhe-worker').appendChild(o); });
+  bhes.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('bhe-worker-rango').appendChild(o); });
   contratos.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('contrato-worker-rango').appendChild(o); });
   contratos.forEach(w => { const o = document.createElement('option'); o.value = w.email; o.textContent = w.nombre; document.getElementById('bono-worker').appendChild(o); });
 
@@ -1918,29 +1939,24 @@ const PDF = (() => {
   });
 
   let bheResumen = null;
-  document.getElementById('btn-load-bhe').addEventListener('click', () => {
-    const email = document.getElementById('bhe-worker').value;
-    if (!email) { alert('Selecciona un trabajador.'); return; }
-    const mes = parseInt(document.getElementById('bhe-mes').value);
-    const anio = parseInt(document.getElementById('bhe-anio').value);
-    const worker = bhes.find(w=>w.email===email);
-    bheResumen = Reportes.calcResumenBHE(worker, allRecords, mes, anio);
+  function renderBHEResultado(resumen) {
+    bheResumen = resumen;
     const fmt = n => '$' + n.toLocaleString('es-CL');
     document.getElementById('bhe-results').innerHTML = `
       <div class="worker-block">
         <div class="worker-block-header">
-          <span class="worker-name">${bheResumen.worker.nombre}</span>
+          <span class="worker-name">${resumen.worker.nombre}</span>
           <span class="badge-tipo">BHE</span>
         </div>
         <div class="metric-grid mini">
-          <div class="metric-card"><div class="metric-label">total horas</div><div class="metric-value">${bheResumen.totalHoras} h</div></div>
-          <div class="metric-card"><div class="metric-label">bruto</div><div class="metric-value">${fmt(bheResumen.bruto)}</div></div>
-          <div class="metric-card"><div class="metric-label">descuento 15,25%</div><div class="metric-value text-warning">${fmt(bheResumen.descuento)}</div></div>
-          <div class="metric-card"><div class="metric-label">líquido</div><div class="metric-value">${fmt(bheResumen.liquido)}</div></div>
+          <div class="metric-card"><div class="metric-label">total horas</div><div class="metric-value">${resumen.totalHoras} h</div></div>
+          <div class="metric-card"><div class="metric-label">bruto</div><div class="metric-value">${fmt(resumen.bruto)}</div></div>
+          <div class="metric-card"><div class="metric-label">descuento 15,25%</div><div class="metric-value text-warning">${fmt(resumen.descuento)}</div></div>
+          <div class="metric-card"><div class="metric-label">líquido</div><div class="metric-value">${fmt(resumen.liquido)}</div></div>
         </div>
         <table class="detail-table">
           <thead><tr><th>fecha</th><th>entrada</th><th>salida</th><th>jornada</th><th>horas</th><th>valor hora</th><th>monto</th></tr></thead>
-          <tbody>${bheResumen.detalle.map(d=>`<tr class="${d.esFeriado?'row-feriado':''}">
+          <tbody>${resumen.detalle.map(d=>`<tr class="${d.esFeriado?'row-feriado':''}">
             <td>${d.fecha}</td><td>${d.entrada}</td><td>${d.salida||'—'}</td>
             <td>${d.esFeriado?'feriado ×1.5':'ordinaria'}</td>
             <td>${d.horas.toFixed(2)}</td><td>${fmt(d.valorHora)}</td><td>${fmt(d.montoJornada)}</td></tr>`).join('')}
@@ -1948,6 +1964,30 @@ const PDF = (() => {
         </table>
       </div>`;
     document.getElementById('pdf-actions-bhe').style.display = 'flex';
+  }
+
+  document.getElementById('bhe-rango-toggle').addEventListener('change', (e) => {
+    document.getElementById('bhe-filtro-mes').style.display = e.target.checked ? 'none' : 'flex';
+    document.getElementById('bhe-filtro-rango').style.display = e.target.checked ? 'flex' : 'none';
+  });
+
+  document.getElementById('btn-load-bhe').addEventListener('click', () => {
+    const email = document.getElementById('bhe-worker').value;
+    if (!email) { alert('Selecciona un trabajador.'); return; }
+    const mes = parseInt(document.getElementById('bhe-mes').value);
+    const anio = parseInt(document.getElementById('bhe-anio').value);
+    const worker = bhes.find(w=>w.email===email);
+    renderBHEResultado(Reportes.calcResumenBHE(worker, allRecords, mes, anio));
+  });
+
+  document.getElementById('btn-load-bhe-rango').addEventListener('click', () => {
+    const email = document.getElementById('bhe-worker-rango').value;
+    if (!email) { alert('Selecciona un trabajador.'); return; }
+    const desde = document.getElementById('bhe-desde').value;
+    const hasta = document.getElementById('bhe-hasta').value;
+    if (!desde || !hasta) { alert('Selecciona fecha de inicio y de término.'); return; }
+    const worker = bhes.find(w=>w.email===email);
+    renderBHEResultado(Reportes.calcResumenBHERango(worker, allRecords, desde, hasta));
   });
 
   document.getElementById('btn-pdf-bhe').addEventListener('click', () => {
