@@ -562,6 +562,29 @@ button:active:not(:disabled) { transform: scale(0.98); }
   .filter-row { flex-direction: column; }
   .filter-row select, .filter-row input { width: 100%; }
 }
+/* ── v5: notas (i) y seguridad ───────────────────────────── */
+.info-i {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--text-muted);
+  color: var(--text-muted); font-size: 11px; font-weight: 700; font-style: normal;
+  cursor: help; margin-left: 6px; vertical-align: middle; text-transform: none; letter-spacing: 0;
+}
+.info-i .info-texto {
+  display: none; position: absolute; left: 50%; top: 24px; transform: translateX(-50%);
+  width: min(280px, 80vw); background: var(--charcoal); color: var(--bone);
+  font-size: 13px; font-weight: 400; line-height: 1.5; padding: 10px 12px; border-radius: 8px;
+  z-index: 50; text-align: left; box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+}
+.info-i:hover .info-texto, .info-i:focus .info-texto { display: block; }
+.seg-form { display: grid; gap: 10px; max-width: 420px; }
+.seg-form input { width: 100%; padding: 0.65rem 0.85rem; border-radius: 8px; border: 1.5px solid var(--border); font-size: 15px; font-family: inherit; background: var(--white); }
+.seg-form input:focus { outline: none; border-color: var(--ember); }
+.disp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.disp-row:last-child { border-bottom: none; }
+.disp-nombre { font-weight: 500; flex: 1; min-width: 140px; }
+.disp-meta { font-size: 12px; color: var(--text-muted); }
+.disp-actual { font-size: 12px; color: #155724; background: #d4edda; padding: 2px 8px; border-radius: 99px; }
+.version-pie { font-size: 12px; color: var(--text-muted); margin-top: 2rem; }
   </style>
 </head>
 <body>
@@ -740,68 +763,75 @@ button:active:not(:disabled) { transform: scale(0.98); }
     <p class="hint-text">gestiona el equipo directamente en Google Sheets (nombre, tipo, horas, valor hora). los días laborales se pueden editar aquí abajo. los cambios se reflejan al instante.</p>
     <a id="link-sheet" href="#" target="_blank" class="btn-primary" style="display:inline-block; text-decoration:none; margin-top:1rem;">abrir Google Sheets →</a>
 
-    <h2 class="section-title" style="margin-top:2rem;">gestión de PINs</h2>
+    <h2 class="section-title" style="margin-top:2rem;">gestión de PINs
+      <span class="info-i" tabindex="0">i<span class="info-texto">Los PIN se guardan cifrados: nadie puede verlos, ni siquiera desde la planilla. Si alguien olvida el suyo, asígnale uno nuevo aquí. Tras 5 intentos fallidos la persona queda bloqueada 10 minutos; asignarle un PIN nuevo la desbloquea.</span></span>
+    </h2>
     <div id="pins-list"></div>
 
     <h2 class="section-title" style="margin-top:2rem;">equipo actual</h2>
     <div id="workers-list"></div>
+
+    <h2 class="section-title" style="margin-top:2rem;">seguridad</h2>
+    <div class="worker-block">
+      <div class="worker-block-header"><span class="worker-name">cambiar contraseña del panel
+        <span class="info-i" tabindex="0">i<span class="info-texto">Esta contraseña abre el panel y autoriza tablets nuevas. Usa al menos 10 caracteres. Al cambiarla, las sesiones abiertas siguen activas; si crees que alguien más la conoce, revoca también los dispositivos de abajo.</span></span>
+      </span></div>
+      <form id="form-clave" class="seg-form">
+        <input type="password" id="clave-actual" placeholder="contraseña actual" autocomplete="current-password" />
+        <input type="password" id="clave-nueva" placeholder="contraseña nueva (mínimo 10 caracteres)" autocomplete="new-password" />
+        <input type="password" id="clave-repetir" placeholder="repite la contraseña nueva" autocomplete="new-password" />
+        <button type="submit" class="btn-primary">cambiar contraseña</button>
+        <p id="clave-msg" style="font-size:13px;"></p>
+      </form>
+    </div>
+
+    <div class="worker-block">
+      <div class="worker-block-header"><span class="worker-name">dispositivos con acceso
+        <span class="info-i" tabindex="0">i<span class="info-texto">Cada computador, celular o tablet que entró con la contraseña aparece aquí. Si pierdes un celular o cambias una tablet, revócalo: dejará de funcionar de inmediato y tendrá que autorizarse de nuevo.</span></span>
+      </span></div>
+      <div id="dispositivos-list"><p class="empty-state">cargando...</p></div>
+    </div>
+    <p class="version-pie" id="version-pie"></p>
   </div>
 </div>
 
 <script>
-// auth.js — Google Sign-In + control de acceso por correo
+// auth.js — v5: la contraseña se revisa en el Apps Script, nunca en el navegador.
+// La sesión queda guardada en este dispositivo por 30 días.
+
+const ADMIN_KEY = 'fen_asis_admin';
+const api = (action, datos) => fenApi(action, datos, ADMIN_KEY);
 
 const Auth = (() => {
-  const STORAGE_KEY = 'fen_admin_auth';
-  let authenticated = sessionStorage.getItem(STORAGE_KEY) === 'true';
-
-  function login(password) {
-    if (password === FEN_CONFIG.ADMIN_PASSWORD) {
-      authenticated = true;
-      sessionStorage.setItem(STORAGE_KEY, 'true');
-      return true;
-    }
-    return false;
+  async function login(password) {
+    const data = await fenApi('loginAdmin', { password, dispositivo: navigator.userAgent.includes('Mobile') ? 'celular' : 'computador' });
+    if (data.success) { localStorage.setItem(ADMIN_KEY, data.token); return { ok: true }; }
+    return { ok: false, error: data.error || 'Clave incorrecta.' };
   }
-
-  function isAdmin() { return authenticated; }
-  function isLoggedIn() { return authenticated; }
-
-  function signOut() {
-    authenticated = false;
-    sessionStorage.removeItem(STORAGE_KEY);
+  function isAdmin() { return !!localStorage.getItem(ADMIN_KEY); }
+  function isLoggedIn() { return isAdmin(); }
+  async function signOut() {
+    try { await api('logout'); } catch (e) {}
+    localStorage.removeItem(ADMIN_KEY);
     window.location.reload();
   }
-
   return { login, isAdmin, isLoggedIn, signOut };
 })();
 
 // sheets.js — lectura y escritura en Google Sheets via API REST
 
 const Sheets = (() => {
-  const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-
-  // ─── Helpers ──────────────────────────────────────────────
-  async function read(range) {
-    const url = `${BASE}/${FEN_CONFIG.SPREADSHEET_ID}/values/${encodeURIComponent(range)}?key=${FEN_CONFIG.API_KEY}`;
-    const r = await fetch(url);
-    const d = await r.json();
-    return d.values || [];
+  // v5: ya no se lee la planilla con una clave de API pública. Todo llega
+  // en una sola llamada al Apps Script (adminDatos), que exige la sesión.
+  let datos = null;
+  async function cargar() {
+    if (!datos) datos = api('adminDatos').then(d => { if (d.error) throw new Error(d.error); return d; });
+    return datos;
   }
 
   // ─── Trabajadores ─────────────────────────────────────────
   async function getWorkers() {
-    const rows = await read('trabajadores!A2:I');
-    return rows.map(r => ({
-      email:        r[0] || '',
-      nombre:       r[1] || '',
-      tipo:         r[2] || '',   // 'contrato' | 'BHE'
-      horasSemana:  parseFloat(r[3]) || 0,
-      valorHora:    parseFloat(r[4]) || 0,
-      activo:       r[5] !== 'false',
-      admin:        r[6] === 'true',
-      diasLaborales: r[8] || 'L-V',   // 'L-V' (lunes-viernes) | 'L-S' (lunes-sábado) — columna I
-    }));
+    return (await cargar()).workers;
   }
 
   async function getWorkerByEmail(email) {
@@ -811,74 +841,25 @@ const Sheets = (() => {
 
   // ─── Registros ────────────────────────────────────────────
   async function getRecords(emailFilter = null) {
-    const rows = await read('registros!A2:I');
-    let records = rows.map(r => ({
-      id:             r[0] || '',
-      email:          r[1] || '',
-      nombre:         r[2] || '',
-      fecha:          r[3] || '',
-      entrada:        r[4] || '',
-      salida:         r[5] || '',
-      tipoJornada:    r[6] || 'ordinaria',  // 'ordinaria' | 'feriado'
-      horasTrabajadas: parseFloat(r[7]) || 0,
-      observacion:    r[8] || '',
-    }));
+    let records = (await cargar()).registros;
     if (emailFilter) records = records.filter(r => r.email === emailFilter);
     return records;
   }
 
-  async function checkIn(worker, tipoJornada = 'ordinaria') {
-    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=checkIn&email=${encodeURIComponent(worker.email)}&nombre=${encodeURIComponent(worker.nombre)}&jornada=${tipoJornada}`;
-    const r = await fetch(url);
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-    return data.id;
-  }
-
-  async function checkOut(recordId, email) {
-    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=checkOut&id=${encodeURIComponent(recordId)}&email=${encodeURIComponent(email)}`;
-    const r = await fetch(url);
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-    return { salida: data.salida, horas: data.horas };
-  }
-
-  async function getOpenShift(email) {
-    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=getOpenShift&email=${encodeURIComponent(email)}`;
-    const r = await fetch(url);
-    const data = await r.json();
-    if (!data.id) return null;
-    return data;
-  }
-
   // ─── Feriados ─────────────────────────────────────────────
   async function getFeriados() {
-    const rows = await read('feriados!A2:B');
-    return rows.map(r => ({ fecha: r[0], descripcion: r[1] || '' }));
+    return (await cargar()).feriados;
   }
 
   // ─── Bonos ────────────────────────────────────────────────
   // Hoja "bonos": A=fecha, B=email, C=nombre, D=monto, E=concepto, F=agregadoPor
   // (la hoja se crea una sola vez con el script de Apps Script "crearHojaBonos")
   async function getBonos() {
-    const rows = await read('bonos!A2:F');
-    return rows.map(r => ({
-      fecha:        r[0] || '',
-      email:        r[1] || '',
-      nombre:       r[2] || '',
-      monto:        parseFloat(r[3]) || 0,
-      concepto:     r[4] || '',
-      agregadoPor:  r[5] || '',
-    }));
+    return (await cargar()).bonos;
   }
 
-  async function agregarBono({ email, nombre, monto, concepto, agregadoPor, fecha }) {
-    const url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=agregarBono` +
-      `&email=${encodeURIComponent(email)}&nombre=${encodeURIComponent(nombre)}` +
-      `&monto=${encodeURIComponent(monto)}&concepto=${encodeURIComponent(concepto)}` +
-      `&fecha=${encodeURIComponent(fecha)}&agregadoPor=${encodeURIComponent(agregadoPor)}`;
-    const r = await fetch(url);
-    const data = await r.json();
+  async function agregarBono({ email, monto, concepto, fecha }) {
+    const data = await api('agregarBono', { email, monto, concepto, fecha });
     if (data.error) throw new Error(data.error);
     return data;
   }
@@ -904,7 +885,7 @@ const Sheets = (() => {
 
   return {
     getWorkers, getWorkerByEmail,
-    getRecords, checkIn, checkOut, getOpenShift,
+    getRecords,
     getFeriados, isFeriado,
     getBonos, agregarBono,
     formatDate, formatTime, pad,
@@ -1624,19 +1605,25 @@ const PDF = (() => {
   const loginError = document.getElementById('login-error');
 
   await new Promise(resolve => {
-    loginForm.addEventListener('submit', (e) => {
+    loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const pass = document.getElementById('login-password').value;
-      if (Auth.login(pass)) {
-        resolve();
-      } else {
-        loginError.textContent = 'Clave incorrecta.';
-        loginError.style.display = 'block';
-        document.getElementById('login-password').value = '';
+      const btn = loginForm.querySelector('button[type=submit]');
+      btn.disabled = true; btn.textContent = 'entrando...';
+      loginError.style.display = 'none';
+      try {
+        const r = await Auth.login(pass);
+        if (r.ok) { resolve(); return; }
+        loginError.textContent = r.error;
+      } catch (err) {
+        loginError.textContent = 'Error de conexión. Intenta de nuevo.';
       }
+      loginError.style.display = 'block';
+      document.getElementById('login-password').value = '';
+      btn.disabled = false; btn.textContent = 'entrar';
     });
 
-    // Si ya había una sesión activa en este navegador (misma pestaña/sesión), entra directo.
+    // Si este dispositivo ya tiene una sesión guardada (dura 30 días), entra directo.
     if (Auth.isAdmin()) resolve();
   });
 
@@ -1646,9 +1633,22 @@ const PDF = (() => {
   document.getElementById('link-sheet').href =
     `https://docs.google.com/spreadsheets/d/${FEN_CONFIG.SPREADSHEET_ID}`;
 
-  const [allRecords, allWorkers, allBonos, allFeriados] = await Promise.all([
-    Sheets.getRecords(), Sheets.getWorkers(), Sheets.getBonos(), Sheets.getFeriados()
-  ]);
+  let allRecords, allWorkers, allBonos, allFeriados;
+  try {
+    [allRecords, allWorkers, allBonos, allFeriados] = await Promise.all([
+      Sheets.getRecords(), Sheets.getWorkers(), Sheets.getBonos(), Sheets.getFeriados()
+    ]);
+  } catch (e) {
+    // Sesión vencida o revocada: vuelve al ingreso.
+    localStorage.removeItem(ADMIN_KEY);
+    window.location.reload();
+    return;
+  }
+
+  // Cualquier llamada posterior que encuentre la sesión vencida vuelve al ingreso.
+  window.addEventListener('unhandledrejection', ev => {
+    if (ev.reason && ev.reason.code === 'sesion') window.location.reload();
+  });
 
   const years = [...new Set(allRecords.map(r => new Date(r.fecha).getFullYear()))];
   const currentYear = new Date().getFullYear();
@@ -1702,48 +1702,47 @@ const PDF = (() => {
 
   document.getElementById('dash-open').innerHTML = openShifts.length === 0
     ? '<p class="empty-state">ningún turno abierto ahora</p>'
-    : openShifts.map(r => `<div class="record-row"><span class="record-date">${r.nombre}</span><span class="record-times">desde las ${r.entrada} · ${r.tipoJornada}</span></div>`).join('');
+    : openShifts.map(r => `<div class="record-row"><span class="record-date">${esc(r.nombre)}</span><span class="record-times">desde las ${esc(r.entrada)} · ${esc(r.tipoJornada)}</span></div>`).join('');
 
   const recent = [...allRecords].filter(r=>r.salida).sort((a,b)=>new Date(b.fecha+' '+b.entrada)-new Date(a.fecha+' '+a.entrada)).slice(0,10);
   document.getElementById('dash-recent').innerHTML = recent.map(r =>
     `<div class="record-row ${r.tipoJornada==='feriado'?'record-feriado':''}">
-      <span class="record-date">${r.nombre}</span><span>${r.fecha}</span>
+      <span class="record-date">${esc(r.nombre)}</span><span>${esc(r.fecha)}</span>
       <span class="record-times">${r.entrada} → ${r.salida}</span>
       <span class="record-hours">${r.horasTrabajadas} h</span>
       ${r.tipoJornada==='feriado'?'<span class="badge-feriado">feriado</span>':''}
     </div>`).join('');
 
   document.getElementById('workers-list').innerHTML = allWorkers.map(w => {
-    const key = w.email.replace(/[@.]/g,'_');
+    const key = w.email.replace(/[^a-zA-Z0-9]/g,'_');
     const mostrarDias = w.tipo === 'contrato';
     return `
     <div class="record-row">
-      <span class="record-date">${w.nombre}</span>
-      <span class="badge-tipo">${w.tipo}</span>
+      <span class="record-date">${esc(w.nombre)}</span>
+      <span class="badge-tipo">${esc(w.tipo)}</span>
       <span>${w.tipo==='contrato' ? w.horasSemana+' h/sem' : '$'+w.valorHora.toLocaleString('es-CL')+'/h'}</span>
-      <span style="color:var(--text-muted)">${w.email}</span>
+      <span style="color:var(--text-muted)">${esc(w.email)}</span>
       ${mostrarDias ? `
       <span class="dias-input-wrap" style="display:flex; align-items:center; gap:6px;">
         <select id="dias-select-${key}" style="font-size:13px; padding:2px 6px;">
           <option value="L-V" ${w.diasLaborales==='L-V'?'selected':''}>L-V</option>
           <option value="L-S" ${w.diasLaborales==='L-S'?'selected':''}>L-S</option>
         </select>
-        <button class="btn-pin-save" onclick="guardarDias('${w.email}')">guardar</button>
+        <button class="btn-pin-save" data-email="${esc(w.email)}" onclick="guardarDias(this.dataset.email)">guardar</button>
         <span class="pin-msg" id="dias-msg-${key}"></span>
       </span>` : ''}
     </div>`;
   }).join('');
 
   window.guardarDias = async function(email) {
-    const key = email.replace(/[@.]/g,'_');
+    const key = email.replace(/[^a-zA-Z0-9]/g,'_');
     const select = document.getElementById(`dias-select-${key}`);
     const msg = document.getElementById(`dias-msg-${key}`);
     const dias = select.value;
     msg.style.color = 'var(--text-muted)';
     msg.textContent = 'guardando...';
     try {
-      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=setDiasLaborales&email=${encodeURIComponent(email)}&dias=${dias}`);
-      const data = await r.json();
+      const data = await api('setDiasLaborales', { email, dias });
       if (data.success) {
         msg.style.color = '#2d8a4e';
         msg.textContent = '✓ guardado';
@@ -1761,36 +1760,30 @@ const PDF = (() => {
 
   // ── Gestión de PINs ────────────────────────────────────
   function renderPins(workers) {
-    document.getElementById('pins-list').innerHTML = workers.map(w => `
+    document.getElementById('pins-list').innerHTML = workers.map(w => {
+      const key = w.email.replace(/[^a-zA-Z0-9]/g,'_');
+      return `
       <div class="pin-row">
-        <span class="pin-nombre">${w.nombre}</span>
-        <span class="pin-estado ${w.tienePin ? 'asignado' : 'sin-pin'}" id="pin-estado-${w.email.replace(/[@.]/g,'_')}">
+        <span class="pin-nombre">${esc(w.nombre)}</span>
+        <span class="pin-estado ${w.tienePin ? 'asignado' : 'sin-pin'}" id="pin-estado-${key}">
           ${w.tienePin ? '✓ PIN asignado' : 'sin PIN'}
         </span>
         <div class="pin-input-wrap">
-          <input class="pin-input" type="text" maxlength="4" pattern="[0-9]{4}"
-            placeholder="0000" id="pin-input-${w.email.replace(/[@.]/g,'_')}"
+          <input class="pin-input" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}"
+            placeholder="0000" id="pin-input-${key}"
             oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-          <button class="btn-pin-save" onclick="guardarPin('${w.email}')">guardar</button>
-          <span class="pin-msg" id="pin-msg-${w.email.replace(/[@.]/g,'_')}"></span>
+          <button class="btn-pin-save" data-email="${esc(w.email)}" onclick="guardarPin(this.dataset.email)">guardar</button>
+          <span class="pin-msg" id="pin-msg-${key}"></span>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
-  // Cargar estado de PINs desde Apps Script
-  async function cargarPins() {
-    try {
-      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=getWorkers`);
-      const data = await r.json();
-      if (data.workers) renderPins(data.workers);
-    } catch(e) {
-      document.getElementById('pins-list').innerHTML = '<p class="empty-state">Error cargando PINs.</p>';
-    }
-  }
-  cargarPins();
+  // v5: el estado de los PIN viene en los mismos datos del panel (nunca el PIN).
+  renderPins(allWorkers.filter(w => w.activo));
 
   window.guardarPin = async function(email) {
-    const key = email.replace(/[@.]/g,'_');
+    const key = email.replace(/[^a-zA-Z0-9]/g,'_');
     const input = document.getElementById(`pin-input-${key}`);
     const msg = document.getElementById(`pin-msg-${key}`);
     const estado = document.getElementById(`pin-estado-${key}`);
@@ -1806,8 +1799,7 @@ const PDF = (() => {
     msg.textContent = 'guardando...';
 
     try {
-      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=setPin&email=${encodeURIComponent(email)}&pin=${pin}`);
-      const data = await r.json();
+      const data = await api('setPin', { email, pin });
       if (data.success) {
         msg.style.color = '#2d8a4e';
         msg.textContent = '✓ guardado';
@@ -1833,7 +1825,7 @@ const PDF = (() => {
     document.getElementById('contrato-results').innerHTML = resumenes.map(r => `
       <div class="worker-block">
         <div class="worker-block-header">
-          <span class="worker-name">${r.worker.nombre}</span>
+          <span class="worker-name">${esc(r.worker.nombre)}</span>
           <span class="${r.horasExtras>0?'badge-extra':'badge-ok'}">${r.horasExtras>0?'⚡ '+r.horasExtras+' h extras':'sin extras'}</span>
         </div>
         <div class="metric-grid mini">
@@ -1853,7 +1845,7 @@ const PDF = (() => {
         <div class="record-row-list">${r.inasistencias.map(f=>`<span class="badge-extra" style="margin:2px 4px 2px 0; display:inline-block;">${f}</span>`).join('')}</div>` : ''}
         ${r.bonosDetalle.length ? `
         <p class="hint-text" style="margin-top:0.75rem;"><strong>bonos del período</strong>:</p>
-        <div class="record-row-list">${r.bonosDetalle.map(b=>`<span class="badge-ok" style="margin:2px 4px 2px 0; display:inline-block;">${b.fecha} · ${fmtPesos(b.monto)} · ${b.concepto}</span>`).join('')}</div>` : ''}
+        <div class="record-row-list">${r.bonosDetalle.map(b=>`<span class="badge-ok" style="margin:2px 4px 2px 0; display:inline-block;">${esc(b.fecha)} · ${fmtPesos(b.monto)} · ${esc(b.concepto)}</span>`).join('')}</div>` : ''}
         <table class="detail-table" style="margin-top:0.75rem;">
           <thead><tr><th>fecha</th><th>entrada</th><th>salida</th><th>jornada</th><th>horas</th></tr></thead>
           <tbody>${r.registros.map(rec=>`<tr class="${rec.tipoJornada==='feriado'?'row-feriado':''}">
@@ -1899,10 +1891,10 @@ const PDF = (() => {
     const worker = contratos.find(w => w.email === email);
     btn.disabled = true; btn.textContent = 'guardando...';
     try {
-      await Sheets.agregarBono({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: FEN_CONFIG.ADMIN_EMAIL });
-      allBonos.push({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: FEN_CONFIG.ADMIN_EMAIL });
+      await Sheets.agregarBono({ email, monto, concepto, fecha });
+      allBonos.push({ email, nombre: worker.nombre, monto, concepto, fecha, agregadoPor: 'admin' });
       msg.style.color = '#2d8a4e';
-      msg.textContent = `✓ bono agregado a ${worker.nombre}`;
+      msg.textContent = `✓ bono agregado a ${worker.nombre}`; // textContent: no necesita escape
       document.getElementById('bono-monto').value = '';
       document.getElementById('bono-concepto').value = '';
     } catch (e) {
@@ -1945,7 +1937,7 @@ const PDF = (() => {
     document.getElementById('bhe-results').innerHTML = `
       <div class="worker-block">
         <div class="worker-block-header">
-          <span class="worker-name">${resumen.worker.nombre}</span>
+          <span class="worker-name">${esc(resumen.worker.nombre)}</span>
           <span class="badge-tipo">BHE</span>
         </div>
         <div class="metric-grid mini">
@@ -2016,10 +2008,7 @@ const PDF = (() => {
     document.getElementById('registros-list').innerHTML = '<p class="empty-state">cargando...</p>';
 
     try {
-      let url = `${FEN_CONFIG.APPS_SCRIPT_URL}?action=getRegistros&mes=${mes}&anio=${anio}`;
-      if (email) url += `&email=${encodeURIComponent(email)}`;
-      const r = await fetch(url);
-      const data = await r.json();
+      const data = await api('getRegistros', { mes, anio, email });
 
       if (!data.registros || data.registros.length === 0) {
         document.getElementById('registros-list').innerHTML = '<p class="empty-state">no hay registros para este período.</p>';
@@ -2028,16 +2017,17 @@ const PDF = (() => {
 
       document.getElementById('registros-list').innerHTML = data.registros.map(rec => `
         <div class="record-row ${rec.tipoJornada==='feriado'?'record-feriado':''}" style="flex-wrap:wrap; gap:8px;">
-          <span class="record-date" style="min-width:100px;">${rec.fecha}</span>
-          <span style="font-weight:500; min-width:100px;">${rec.nombre}</span>
-          <span class="record-times">${rec.entrada} → ${rec.salida || '<em>en curso</em>'}</span>
+          <span class="record-date" style="min-width:100px;">${esc(rec.fecha)}</span>
+          <span style="font-weight:500; min-width:100px;">${esc(rec.nombre)}</span>
+          <span class="record-times">${esc(rec.entrada)} → ${rec.salida ? esc(rec.salida) : '<em>en curso</em>'}</span>
           <span class="record-hours">${rec.horasTrabajadas ? rec.horasTrabajadas+' h' : '—'}</span>
           ${rec.tipoJornada==='feriado'?'<span class="badge-feriado">feriado</span>':''}
           <span style="font-size:11px; color:var(--text-muted); flex-basis:100%;">
-            ${rec.ingresadoPor !== 'trabajador' ? '✏️ '+rec.ingresadoPor : '👤 ingresado por '+rec.nombre}
+            ${rec.ingresadoPor !== 'trabajador' ? '✏️ '+esc(rec.ingresadoPor) : '👤 ingresado por '+esc(rec.nombre)}
           </span>
           <button class="btn-secondary" style="padding:4px 12px; font-size:12px;"
-            onclick="abrirEdicion('${rec.id}','${rec.entrada}','${rec.salida}','${rec.tipoJornada}')">
+            data-id="${esc(rec.id)}" data-entrada="${esc(rec.entrada)}" data-salida="${esc(rec.salida)}" data-jornada="${esc(rec.tipoJornada)}"
+            onclick="abrirEdicion(this.dataset.id, this.dataset.entrada, this.dataset.salida, this.dataset.jornada)">
             editar
           </button>
         </div>`).join('');
@@ -2067,11 +2057,8 @@ const PDF = (() => {
     const entrada = document.getElementById('edit-entrada').value;
     const salida = document.getElementById('edit-salida').value;
     const jornada = document.getElementById('edit-jornada').value;
-    const adminEmail = FEN_CONFIG.ADMIN_EMAIL;
-
     try {
-      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=editarRegistro&id=${encodeURIComponent(id)}&entrada=${entrada}&salida=${salida}&jornada=${jornada}&adminEmail=${encodeURIComponent(adminEmail)}`);
-      const data = await r.json();
+      const data = await api('editarRegistro', { id, entrada, salida, jornada });
       if (data.success) {
         document.getElementById('edit-msg').style.color = '#2d8a4e';
         document.getElementById('edit-msg').textContent = `✓ guardado · ${data.horas} h`;
@@ -2105,16 +2092,11 @@ const PDF = (() => {
     }
 
     const worker = allWorkers.find(w => w.email === email);
-    const adminEmail = FEN_CONFIG.ADMIN_EMAIL;
     const btn = document.getElementById('btn-agregar-turno');
     btn.disabled = true; btn.textContent = 'guardando...';
 
     try {
-      const r = await fetch(`${FEN_CONFIG.APPS_SCRIPT_URL}?action=agregarRegistro` +
-        `&email=${encodeURIComponent(email)}&nombre=${encodeURIComponent(worker.nombre)}` +
-        `&fecha=${fecha}&entrada=${entrada}&salida=${salida}&jornada=${jornada}` +
-        `&adminEmail=${encodeURIComponent(adminEmail)}`);
-      const data = await r.json();
+      const data = await api('agregarRegistro', { email, fecha, entrada, salida, jornada });
       if (data.success) {
         msg.style.color = '#2d8a4e';
         msg.textContent = `✓ turno agregado · ${data.horas ? data.horas+' h' : 'sin salida registrada'}`;
@@ -2132,6 +2114,51 @@ const PDF = (() => {
     }
     btn.disabled = false; btn.textContent = 'agregar';
   });
+
+  // ── Seguridad (v5) ─────────────────────────────────────
+  document.getElementById('version-pie').textContent =
+    `fën asistencia · app v${FEN_CONFIG.VERSION}`;
+
+  document.getElementById('form-clave').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('clave-msg');
+    const actual = document.getElementById('clave-actual').value;
+    const nueva = document.getElementById('clave-nueva').value;
+    const repetir = document.getElementById('clave-repetir').value;
+    msg.style.color = 'var(--warning)';
+    if (nueva.length < 10) { msg.textContent = 'La contraseña nueva debe tener al menos 10 caracteres.'; return; }
+    if (nueva !== repetir) { msg.textContent = 'Las contraseñas nuevas no coinciden.'; return; }
+    msg.style.color = 'var(--text-muted)'; msg.textContent = 'guardando...';
+    const data = await api('cambiarClaveAdmin', { actual, nueva });
+    if (data.success) {
+      msg.style.color = '#2d8a4e'; msg.textContent = '✓ contraseña cambiada';
+      e.target.reset();
+    } else {
+      msg.style.color = 'var(--warning)'; msg.textContent = data.error || 'No se pudo cambiar';
+    }
+  });
+
+  async function cargarDispositivos() {
+    const cont = document.getElementById('dispositivos-list');
+    const data = await api('listarDispositivos');
+    if (!data.dispositivos || !data.dispositivos.length) { cont.innerHTML = '<p class="empty-state">sin dispositivos</p>'; return; }
+    const fecha = iso => new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
+    cont.innerHTML = data.dispositivos.map(d => `
+      <div class="disp-row">
+        <span class="disp-nombre">${d.rol === 'tablet' ? '📱 ' : '💻 '}${esc(d.nombre || d.rol)}</span>
+        <span class="disp-meta">${d.rol === 'tablet' ? 'tablet de marcación' : 'panel admin'} · desde ${esc(fecha(d.creada))} · vence ${esc(fecha(d.vence))}</span>
+        ${d.estaSesion
+          ? '<span class="disp-actual">este dispositivo</span>'
+          : `<button class="btn-secondary" style="padding:4px 12px; font-size:12px;" data-id="${esc(d.id)}" onclick="revocarDispositivo(this)">revocar</button>`}
+      </div>`).join('');
+  }
+  window.revocarDispositivo = async function(btn) {
+    if (!confirm('¿Revocar este dispositivo? Dejará de funcionar de inmediato y tendrá que autorizarse otra vez con la contraseña.')) return;
+    btn.disabled = true; btn.textContent = 'revocando...';
+    const data = await api('revocarDispositivo', { id: btn.dataset.id });
+    if (data.success) cargarDispositivos(); else { btn.disabled = false; btn.textContent = 'revocar'; alert(data.error || 'No se pudo revocar'); }
+  };
+  cargarDispositivos();
 
 })();
 </script>

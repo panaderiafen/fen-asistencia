@@ -84,6 +84,7 @@
       flex: 1;
       min-height: 0;
       padding-bottom: 1rem;
+      align-content: start; /* v5: las tarjetas no se estiran cuando hay pocas */
     }
 
     .worker-btn {
@@ -392,6 +393,16 @@
     .btn-confirmar-solicitud:active { transform: scale(0.97); }
     .btn-confirmar-solicitud:disabled { opacity: 0.5; }
 
+    /* ── Autorizar dispositivo ── */
+    .screen-autorizar { align-items: center; justify-content: safe center; gap: 1.25rem; padding: 2rem; text-align: center; }
+    .autorizar-input {
+      width: 100%; max-width: 360px; padding: 0.9rem 1rem; border-radius: var(--radius);
+      border: 1.5px solid rgba(245,237,215,0.25); background: var(--charcoal2); color: var(--bone);
+      font-size: 18px; font-family: inherit;
+    }
+    .autorizar-input:focus { outline: none; border-color: var(--ember); }
+    .info-nota { font-size: 13px; color: rgba(245,237,215,0.5); max-width: 420px; line-height: 1.6; }
+
     /* ── Loading ── */
     .loading { opacity: 0.5; font-size: 14px; text-align: center; }
   </style>
@@ -405,6 +416,17 @@
     <div id="clock" class="clock">--:--:--</div>
     <div id="clock-date" class="clock-date"></div>
   </div>
+</div>
+
+<!-- Pantalla 0: Autorizar este dispositivo (solo la primera vez) -->
+<div class="screen screen-autorizar" id="screen-autorizar">
+  <div class="confirm-icon">🔒</div>
+  <div class="solicitar-title">Autorizar esta tablet</div>
+  <p class="info-nota">Por seguridad, cada tablet se autoriza una sola vez con la contraseña del administrador. Después queda lista para que el equipo marque con su PIN.</p>
+  <input type="password" id="autorizar-clave" class="autorizar-input" placeholder="contraseña del administrador" autocomplete="off" />
+  <input type="text" id="autorizar-nombre" class="autorizar-input" placeholder="nombre de la tablet (ej. Barros Arana)" maxlength="40" />
+  <p class="pin-error" id="autorizar-error"></p>
+  <button class="btn-confirmar-solicitud" id="btn-autorizar">autorizar</button>
 </div>
 
 <!-- Pantalla 1: Lista de trabajadores -->
@@ -480,8 +502,12 @@
   <button class="btn-back" id="btn-back-solicitar">← cancelar</button>
 </div>
 
+<script src="config.js"></script>
 <script>
-const API = 'https://script.google.com/macros/s/AKfycbxiePnuf-lVZYeSipFgRLjFZpukCF78j4Bl6aQsQt6bkDOznOZXXsIi9YntXM0b101F/exec';
+// v5: todo pasa por fenApi (POST + sesión de esta tablet). Ver config.js.
+const TABLET_KEY = 'fen_asis_tablet';
+const api = (action, datos) => fenApi(action, datos, TABLET_KEY);
+let pinToken = null;
 
 let currentWorker = null;
 let openShift = null;
@@ -509,28 +535,27 @@ function showScreen(id) {
 // ── Cargar trabajadores ────────────────────────────────────
 async function loadWorkers() {
   try {
-    const r = await fetch(`${API}?action=getWorkers`);
-    const data = await r.json();
+    const data = await api('getWorkers');
     const grid = document.getElementById('workers-grid');
     if (!data.workers || data.workers.length === 0) {
       grid.innerHTML = '<p class="loading">No hay trabajadores registrados.</p>';
       return;
     }
     grid.innerHTML = data.workers.map(w => {
-      const slug = w.email.split("@")[0];
-      const inicial = w.nombre.charAt(0).toUpperCase();
+      const slug = encodeURIComponent(w.email.split("@")[0]);
+      const inicial = esc(w.nombre.charAt(0).toUpperCase());
       const estadoHtml = w.entrada
         ? `<span class="worker-estado activo">desde las ${w.entrada}</span>`
         : `<span class="worker-estado">sin ingreso</span>`;
       return `
-      <button class="worker-btn ${w.tienePin ? "" : "sin-pin"}" data-email="${w.email}" data-nombre="${w.nombre}" data-tipo="${w.tipo}">
+      <button class="worker-btn ${w.tienePin ? "" : "sin-pin"}" data-email="${esc(w.email)}" data-nombre="${esc(w.nombre)}" data-tipo="${esc(w.tipo)}">
         <div class="worker-initial">
-          <img src="fotos/${slug}.jpg" alt="${w.nombre}"
+          <img src="fotos/${slug}.jpg" alt="${esc(w.nombre)}"
             style="width:100%;height:100%;border-radius:50%;object-fit:cover;"
             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
           <span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;">${inicial}</span>
         </div>
-        <span>${w.nombre}</span>
+        <span>${esc(w.nombre)}</span>
         ${estadoHtml}
         ${!w.tienePin ? '<span class="worker-tipo">sin PIN asignado</span>' : ""}
       </button>`;
@@ -543,10 +568,36 @@ async function loadWorkers() {
         startPin();
       });
     });
+    showScreen('screen-workers');
   } catch(e) {
+    if (e.code === 'sesion') { showScreen('screen-autorizar'); return; }
     document.getElementById('workers-grid').innerHTML = '<p class="loading">Error cargando equipo. Verifica la conexión.</p>';
+    showScreen('screen-workers');
   }
 }
+
+// ── Autorizar dispositivo (una vez) ────────────────────────
+document.getElementById('btn-autorizar').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-autorizar');
+  const err = document.getElementById('autorizar-error');
+  const password = document.getElementById('autorizar-clave').value;
+  const nombre = document.getElementById('autorizar-nombre').value.trim() || 'tablet';
+  if (!password) { err.textContent = 'Ingresa la contraseña.'; return; }
+  btn.disabled = true; btn.textContent = 'autorizando...'; err.textContent = '';
+  try {
+    const data = await fenApi('autorizarDispositivo', { password, nombre });
+    if (data.success) {
+      localStorage.setItem(TABLET_KEY, data.token);
+      document.getElementById('autorizar-clave').value = '';
+      await loadWorkers();
+    } else {
+      err.textContent = data.error || 'No se pudo autorizar';
+    }
+  } catch (e) {
+    err.textContent = 'Error de conexión. Intenta de nuevo.';
+  }
+  btn.disabled = false; btn.textContent = 'autorizar';
+});
 
 // ── PIN ────────────────────────────────────────────────────
 function startPin() {
@@ -585,9 +636,9 @@ document.getElementById('btn-back-pin').addEventListener('click', () => {
 async function submitPin() {
   document.getElementById('pin-error').textContent = '';
   try {
-    const r = await fetch(`${API}?action=verifyPin&email=${encodeURIComponent(currentWorker.email)}&pin=${pinBuffer}`);
-    const data = await r.json();
+    const data = await api('verifyPin', { email: currentWorker.email, pin: pinBuffer });
     if (data.success) {
+      pinToken = data.pinToken;
       await loadFichar();
     } else {
       document.getElementById('pin-error').textContent = data.error || 'PIN incorrecto';
@@ -595,6 +646,7 @@ async function submitPin() {
       updatePinDots();
     }
   } catch(e) {
+    if (e.code === 'sesion') { showScreen('screen-autorizar'); return; }
     document.getElementById('pin-error').textContent = 'Error de conexión. Intenta de nuevo.';
     pinBuffer = '';
     updatePinDots();
@@ -608,8 +660,8 @@ async function loadFichar() {
 
   // Verificar turno abierto
   try {
-    const r = await fetch(`${API}?action=getOpenShift&email=${encodeURIComponent(currentWorker.email)}`);
-    openShift = await r.json();
+    openShift = await api('getOpenShift', { pinToken });
+    if (openShift.code === 'pin') { pinVencido(); return; }
   } catch(e) { openShift = { id: null }; }
 
   updateFicharBtns();
@@ -633,6 +685,12 @@ function updateFicharBtns() {
   }
 }
 
+// El permiso del PIN dura 2 minutos: si venció, se vuelve a pedir.
+function pinVencido() {
+  startPin();
+  document.getElementById('pin-error').textContent = 'Pasó mucho rato: ingresa tu PIN de nuevo.';
+}
+
 // Selector jornada
 document.querySelectorAll('.jornada-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -647,8 +705,8 @@ document.getElementById('btn-entrada').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'registrando...';
   try {
-    const r = await fetch(`${API}?action=checkIn&email=${encodeURIComponent(currentWorker.email)}&nombre=${encodeURIComponent(currentWorker.nombre)}&jornada=${jornadaActual}`);
-    const data = await r.json();
+    const data = await api('checkIn', { pinToken, jornada: jornadaActual });
+    if (data.code === 'pin') { btn.textContent = '→ entrada'; btn.disabled = false; pinVencido(); return; }
     if (data.success) {
       openShift = { id: data.id, entrada: data.entrada, tipoJornada: jornadaActual };
       showConfirm('entrada', data.entrada, jornadaActual);
@@ -668,8 +726,8 @@ document.getElementById('btn-salida').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'registrando...';
   try {
-    const r = await fetch(`${API}?action=checkOut&id=${encodeURIComponent(openShift.id)}&email=${encodeURIComponent(currentWorker.email)}`);
-    const data = await r.json();
+    const data = await api('checkOut', { pinToken });
+    if (data.code === 'pin') { btn.textContent = '← salida'; btn.disabled = false; pinVencido(); return; }
     if (data.success) {
       showConfirm('salida', data.salida, null, data.horas);
       openShift = { id: null };
@@ -685,6 +743,7 @@ document.getElementById('btn-salida').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-back-fichar').addEventListener('click', () => {
+  pinToken = null;
   currentWorker = null;
   openShift = null;
   showScreen('screen-workers');
@@ -709,6 +768,7 @@ function showConfirm(tipo, hora, jornada, horas) {
   showScreen('screen-confirm');
 
   setTimeout(() => {
+    pinToken = null;
     currentWorker = null;
     openShift = null;
     jornadaActual = 'ordinaria';
@@ -733,12 +793,12 @@ document.getElementById('btn-confirmar-solicitud').addEventListener('click', asy
   const btn = document.getElementById('btn-confirmar-solicitud');
   btn.disabled = true;
   btn.textContent = 'enviando...';
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  let timeoutId;
   try {
-    const r = await fetch(`${API}?action=solicitarEstado&email=${encodeURIComponent(currentWorker.email)}`, { signal: controller.signal });
+    const tiempo = new Promise((_, rej) => { timeoutId = setTimeout(() => { const e = new Error('tiempo'); e.name = 'AbortError'; rej(e); }, 30000); });
+    const data = await Promise.race([api('solicitarEstado', { pinToken }), tiempo]);
     clearTimeout(timeoutId);
-    const data = await r.json();
+    if (data.code === 'pin') { btn.disabled = false; btn.textContent = 'enviar solicitud'; pinVencido(); return; }
     if (data.success) {
       document.getElementById('confirm-icon').textContent = '📬';
       document.getElementById('confirm-title').textContent = 'Solicitud enviada';
@@ -768,7 +828,8 @@ document.getElementById('btn-confirmar-solicitud').addEventListener('click', asy
 });
 
 // ── Init ───────────────────────────────────────────────────
-loadWorkers();
+if (localStorage.getItem(TABLET_KEY)) loadWorkers();
+else showScreen('screen-autorizar');
 </script>
 </body>
 </html>
