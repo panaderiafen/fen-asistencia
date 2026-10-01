@@ -1,5 +1,5 @@
 // ============================================================
-//  fën asistencia — Apps Script API v5.0.0  (2026-10-01)
+//  fën asistencia — Apps Script API v5.0.1  (2026-10-01)
 //
 //  Implementar como App web: ejecutar como Yo, acceso "Cualquier persona".
 //  El acceso público es necesario para que GitHub Pages pueda llamar al
@@ -7,7 +7,10 @@
 //  una sesión válida (ver "Quién puede hacer qué", más abajo).
 //
 //  Cambios respecto a v4:
-//   - Toda llamada va por POST con el cuerpo en JSON (nada viaja en la URL).
+//   - Las llamadas van por POST con el cuerpo en JSON. Si Google desvía un POST
+//     y llega como GET (pasa a veces en navegadores con varias cuentas de
+//     Google abiertas), la app lo detecta y reintenta por GET (v5.0.1).
+//   - Cada escritura lleva una clave única: si llega dos veces, se ejecuta una.
 //   - Panel admin: la contraseña se revisa aquí, nunca en el navegador.
 //     Se guarda cifrada en las propiedades del script, no en la planilla.
 //   - Tablet: cada dispositivo se autoriza una vez con la contraseña admin.
@@ -23,7 +26,7 @@
 //  Instalación (una vez): ver README.md → función instalarSeguridad().
 // ============================================================
 
-const VERSION = '5.0.0';
+const VERSION = '5.0.1';
 
 const SESION_ADMIN_DIAS   = 30;    // cuánto dura la sesión del panel en un dispositivo
 const SESION_TABLET_DIAS  = 400;   // la tablet queda autorizada ~1 año
@@ -70,11 +73,17 @@ const ACCIONES = {
 };
 
 function doGet(e) {
-  const accion = e && e.parameter && e.parameter.action;
-  if (accion === 'ping') return jsonResponse({ ok: true, version: VERSION });
-  // v5 no acepta acciones por la URL: así ni el PIN ni las claves quedan
-  // en el historial del navegador o en registros de servidores intermedios.
-  return jsonResponse({ error: 'Esta versión solo acepta POST. Actualiza la app.', code: 'version' });
+  const prm = (e && e.parameter) || {};
+  if (prm.action === 'ping') return jsonResponse({ ok: true, version: VERSION });
+  // Respaldo: la app usa POST, pero si Google convirtió el POST en GET, la app
+  // reintenta mandando el mismo JSON en el parámetro "p". Las acciones sueltas
+  // en la URL (como en v4) siguen sin aceptarse.
+  if (prm.p) {
+    let datos;
+    try { datos = JSON.parse(prm.p); } catch (err) { return jsonResponse({ error: 'Solicitud inválida', code: 'formato' }); }
+    return jsonResponse(despachar(datos));
+  }
+  return jsonResponse({ error: 'Solicitud sin datos: la app reintentará.', code: 'version' });
 }
 
 function doPost(e) {
@@ -111,7 +120,16 @@ function despachar(p) {
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(20000)) return { error: 'El sistema está ocupado, intenta de nuevo en unos segundos.', code: 'ocupado' };
     try {
-      return def.fn(p, ses);
+      // Una misma escritura (misma clave "idem") nunca se ejecuta dos veces:
+      // si ya se hizo, se devuelve el mismo resultado.
+      const idem = typeof p.idem === 'string' && /^[a-z0-9-]{8,64}$/i.test(p.idem) ? 'idem_' + p.idem : null;
+      if (idem) {
+        const previo = cache().get(idem);
+        if (previo) return JSON.parse(previo);
+      }
+      const r = def.fn(p, ses);
+      if (idem) cache().put(idem, JSON.stringify(r), 600);
+      return r;
     } finally {
       lock.releaseLock();
     }
@@ -698,7 +716,7 @@ function solicitarEstado(params) {
   doc.saveAndClose();
   const docFile = DriveApp.getFileById(doc.getId());
   const pdf = docFile.getAs('application/pdf').setName('fen_estado_' + worker.nombre.replace(/ /g, '_') + '_' + nombreMes + '_' + anio + '.pdf');
-  GmailApp.sendEmail(CORREO_ADMIN, '[fen] Estado de horas - ' + worker.nombre + ' - ' + nombreMes + ' ' + anio,
+  MailApp.sendEmail(CORREO_ADMIN, '[fen] Estado de horas - ' + worker.nombre + ' - ' + nombreMes + ' ' + anio,
     'Hola,\n\n' + worker.nombre + ' ha solicitado su estado de horas correspondiente a ' + nombreMes + ' ' + anio +
     '.\n\nEncontrarás el detalle completo en el PDF adjunto.\n\n- fen asistencia', { attachments: [pdf] });
   docFile.setTrashed(true); // el documento temporal; el PDF queda en el correo
