@@ -3,7 +3,7 @@
 // La contraseña del panel y los PIN se revisan en el Apps Script.
 const FEN_CONFIG = {
   VERSION:          '5.0.1',
-  SPREADSHEET_ID:   '1pJFTUSL47jIKjXmBTiG1xrGNTm2gKPe_hdPCgfiqhBU', // solo para el botón "abrir Google Sheets"; la planilla queda privada
+  SPREADSHEET_ID:   '1mzvKxBHVqzeP_KxstEmTkQdMEgiaGgybQVar4hXJB8I', // solo para el botón "abrir Google Sheets"; la planilla queda privada
   APPS_SCRIPT_URL:  'https://script.google.com/macros/s/AKfycbyPvMkrMbQbMqgJDCbXqKrpWp7HWeBGoOVV8zLk8xuxLMdGEdLxa9uExTDnRvjVLnY/exec',
   BHE_DESCUENTO:    0.1525,
   FERIADO_MULTIPLICADOR: 1.5,
