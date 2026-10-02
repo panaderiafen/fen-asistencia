@@ -1,5 +1,5 @@
 // ============================================================
-//  fën asistencia — Apps Script API v5.0.1  (2026-10-01)
+//  fën asistencia — Apps Script API v5.1.0  (2026-10-01)
 //
 //  Implementar como App web: ejecutar como Yo, acceso "Cualquier persona".
 //  El acceso público es necesario para que GitHub Pages pueda llamar al
@@ -23,10 +23,16 @@
 //     Nada se borra.
 //   - Bloqueo (LockService) en todas las escrituras.
 //
+//  v5.1.0: Asistencia es también el "llavero" de Fën. Otras apps de Fën
+//   (por ahora Producción) le preguntan, de servidor a servidor y con una
+//   clave de servicio, si la contraseña del dueño o el PIN de una persona
+//   son correctos. Así hay UNA sola contraseña de dueño y UN solo PIN por
+//   persona para todas las apps. Ver crearClaveServicioProduccion().
+//
 //  Instalación (una vez): ver README.md → función instalarSeguridad().
 // ============================================================
 
-const VERSION = '5.0.1';
+const VERSION = '5.1.0';
 
 const SESION_ADMIN_DIAS   = 30;    // cuánto dura la sesión del panel en un dispositivo
 const SESION_TABLET_DIAS  = 400;   // la tablet queda autorizada ~1 año
@@ -46,6 +52,7 @@ const R = { id: 0, correo: 1, nombre: 2, fecha: 3, entrada: 4, salida: 5, jornad
 //   equipo  : tablet autorizada o panel admin
 //   pin     : además requiere el permiso que entrega verifyPin
 //   admin   : solo el panel admin
+//   servicio: otra app de Fën (servidor a servidor), con su clave de servicio
 const ACCIONES = {
   ping:                 { nivel: 'publico', fn: () => ({ ok: true, version: VERSION }) },
   loginAdmin:           { nivel: 'publico', fn: loginAdmin },
@@ -70,6 +77,11 @@ const ACCIONES = {
   listarDispositivos:   { nivel: 'admin',   fn: listarDispositivos },
   revocarDispositivo:   { nivel: 'admin',   fn: revocarDispositivo, escribe: true },
   logout:               { nivel: 'admin',   fn: logout },
+
+  srvPing:              { nivel: 'servicio', fn: () => ({ success: true, version: VERSION }) },
+  srvPersonas:          { nivel: 'servicio', fn: srvPersonas },
+  srvVerificarAdmin:    { nivel: 'servicio', fn: srvVerificarAdmin },
+  srvVerificarPin:      { nivel: 'servicio', fn: srvVerificarPin },
 };
 
 function doGet(e) {
@@ -97,12 +109,14 @@ function doPost(e) {
 }
 
 function despachar(p) {
-  const def = ACCIONES[p.action];
+  const def = Object.prototype.hasOwnProperty.call(ACCIONES, String(p.action)) ? ACCIONES[p.action] : null;
   if (!def) return { error: 'Acción no reconocida: ' + p.action, code: 'accion' };
 
   try {
     let ses = null;
-    if (def.nivel !== 'publico') {
+    if (def.nivel === 'servicio') {
+      if (!servicioValido(p.servicio, p.claveServicio)) return { error: 'Servicio no autorizado.', code: 'servicio' };
+    } else if (def.nivel !== 'publico') {
       ses = leerSesion(p.token);
       if (!ses) return { error: 'Sesión vencida o dispositivo no autorizado.', code: 'sesion' };
       if (def.nivel === 'admin' && ses.rol !== 'admin') {
@@ -781,6 +795,63 @@ function calcHoras(entrada, salida) {
 function jsonResponse(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Servicio para otras apps de Fën (v5.1.0)
+// ═══════════════════════════════════════════════════════════
+//  Cada app tiene su propia clave de servicio. Aquí se guarda solo su huella
+//  (SHA-256), en las propiedades del script: ni en la planilla ni en el código.
+
+function servicioValido(nombre, clave) {
+  if (!/^[a-z]{3,20}$/.test(String(nombre || '')) || typeof clave !== 'string' || clave.length < 20) return false;
+  const guardado = props().getProperty('SRV_' + nombre);
+  return !!guardado && guardado === sha256Hex(clave);
+}
+
+// Personas activas con PIN: Producción las usa para elegir quién es jefa de cada área.
+function srvPersonas() {
+  const data = hoja('trabajadores').getDataRange().getValues();
+  const personas = [];
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][T.correo] || String(data[i][T.activo]) === 'false') continue;
+    personas.push({ email: String(data[i][T.correo]), nombre: String(data[i][T.nombre]),
+                    tienePin: String(data[i][T.pin]) !== '' });
+  }
+  return { success: true, personas };
+}
+
+// Misma contraseña del panel de Asistencia, mismo bloqueo tras 5 intentos.
+function srvVerificarAdmin(p) {
+  if (estaBloqueado('admin')) return { error: 'Demasiados intentos. Espera 15 minutos.', code: 'bloqueado' };
+  if (!claveCorrecta(p.password)) {
+    const quedan = registrarFallo('admin', BLOQUEO_ADMIN_SEG);
+    return { error: quedan > 0 ? 'Clave incorrecta.' : 'Demasiados intentos. Espera 15 minutos.', code: 'clave' };
+  }
+  limpiarFallos('admin');
+  return { success: true };
+}
+
+// Mismo PIN de la tablet, mismo bloqueo por persona.
+function srvVerificarPin(p) {
+  const fila = buscarTrabajador(p.email);
+  if (!fila || String(fila.valores[T.activo]) === 'false') return { error: 'Persona no encontrada o inactiva.' };
+  const r = verifyPin(p);
+  if (!r.success) return r;
+  cache().remove('pt_' + r.pinToken); // aquí no se marca asistencia: el permiso de 2 min no se usa
+  return { success: true, email: String(fila.valores[T.correo]), nombre: String(fila.valores[T.nombre]) };
+}
+
+function crearClaveServicio_(nombre) {
+  const clave = 'fsv-' + tokenAleatorio();
+  props().setProperty('SRV_' + nombre, sha256Hex(clave));
+  Logger.log('CLAVE DE SERVICIO para "' + nombre + '": ' + clave);
+  Logger.log('Cópiala en el Apps Script de ' + nombre + ' → Configuración del proyecto → Propiedades del script → ASISTENCIA_CLAVE. No la guardes en ningún otro lado.');
+  return clave;
+}
+
+// Ejecutar desde el editor (Ejecutar ▸ crearClaveServicioProduccion).
+// Si la ejecutas de nuevo, la clave anterior deja de servir (útil si se filtró).
+function crearClaveServicioProduccion() { return crearClaveServicio_('produccion'); }
 
 // ═══════════════════════════════════════════════════════════
 //  INSTALACIÓN — ejecutar UNA vez desde el editor (Ejecutar ▸ instalarSeguridad)

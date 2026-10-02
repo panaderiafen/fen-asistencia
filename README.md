@@ -1,8 +1,26 @@
-# fën asistencia · v5.0.1 (seguridad)
+# fën asistencia · v5.1.0 (seguridad + llavero de Fën)
 
-**App:** v5.0.1 · **Apps Script:** v5.0.1 · 1 de octubre de 2026
+**App:** v5.0.1 · **Apps Script:** v5.1.0 · 1 de octubre de 2026
 
 Es la primera entrega de la Fase 0 de Sistema Fën: cierra las puertas de seguridad de Asistencia sin cambiar cómo trabaja el equipo. La tablet y el panel se ven y se usan igual que antes. Lo único nuevo es que **cada dispositivo se autoriza una vez** con la contraseña del administrador.
+
+## Novedades de v5.1.0 (respecto a v5.0.1)
+
+Asistencia pasa a ser el "llavero" de Fën: otras apps le preguntan si la contraseña del dueño o el PIN de una persona son correctos. La primera en usarlo es Producción v2.0.0.
+
+- Hay **una sola contraseña de dueño** (la del panel de Asistencia) y **un solo PIN por persona** para todas las apps. Se cambian aquí y valen en todas.
+- Cada app se conecta con su propia **clave de servicio**. Se crea con la función `crearClaveServicioProduccion()` y aquí queda guardada solo su huella, en las propiedades del script.
+- Los bloqueos son compartidos: 5 intentos fallidos bloquean igual, se hagan desde la tablet, el panel o Producción.
+- Se agregó una defensa extra contra nombres de acción raros (`__proto__` y similares).
+- **Solo cambia `Code.gs`.** La tablet, el panel y `config.js` siguen igual que en v5.0.1, así que en GitHub solo se actualiza `Code.gs` como respaldo.
+
+### Instalar v5.1.0
+1. En la planilla real, ve a **Extensiones → Apps Script**, reemplaza todo el código por `Code.gs` (v5.1.0) y guarda.
+2. **Implementar → Gestionar implementaciones → ✏️ → Versión: Nueva versión → Implementar.** La URL no cambia.
+3. Elige la función `crearClaveServicioProduccion` y presiona **Ejecutar**. En el **Registro de ejecución** aparece una clave que empieza con `fsv-`. Cópiala directo en Producción (ver el README de Producción) y no la guardes en ningún documento.
+4. Comprueba que la tablet sigue marcando: alguien marca entrada y la marca aparece en la planilla.
+
+Si algún día crees que la clave de servicio se filtró, ejecuta otra vez `crearClaveServicioProduccion`: la anterior deja de servir y pegas la nueva en Producción.
 
 ## Novedades de v5.0.1 (respecto a v5.0.0)
 
@@ -89,7 +107,7 @@ Conviene hacerla fuera de horario, porque la tablet y el script deben actualizar
 Corren en un simulador de Apps Script con datos ficticios: sin internet y sin tocar tus planillas.
 
 ```
-node --test pruebas/asistencia/backend.test.js        # 18 pruebas del script
+node --test pruebas/asistencia/backend.test.js        # 19 pruebas del script
 NODE_PATH=$(npm root -g) node --test pruebas/asistencia/e2e.test.js   # 9 pruebas en navegador + capturas
 ```
 
