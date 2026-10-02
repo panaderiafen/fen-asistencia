@@ -1,5 +1,5 @@
 // ============================================================
-//  fën asistencia — Apps Script API v5.1.0  (2026-10-01)
+//  fën asistencia — Apps Script API v5.2.0  (2026-10-02)
 //
 //  Implementar como App web: ejecutar como Yo, acceso "Cualquier persona".
 //  El acceso público es necesario para que GitHub Pages pueda llamar al
@@ -23,6 +23,7 @@
 //     Nada se borra.
 //   - Bloqueo (LockService) en todas las escrituras.
 //
+//  v5.2.0: claves de servicio también para Gastos y B2B.
 //  v5.1.0: Asistencia es también el "llavero" de Fën. Otras apps de Fën
 //   (por ahora Producción) le preguntan, de servidor a servidor y con una
 //   clave de servicio, si la contraseña del dueño o el PIN de una persona
@@ -32,7 +33,7 @@
 //  Instalación (una vez): ver README.md → función instalarSeguridad().
 // ============================================================
 
-const VERSION = '5.1.0';
+const VERSION = '5.2.0';
 
 const SESION_ADMIN_DIAS   = 30;    // cuánto dura la sesión del panel en un dispositivo
 const SESION_TABLET_DIAS  = 400;   // la tablet queda autorizada ~1 año
@@ -803,7 +804,7 @@ function jsonResponse(data) {
 //  (SHA-256), en las propiedades del script: ni en la planilla ni en el código.
 
 function servicioValido(nombre, clave) {
-  if (!/^[a-z]{3,20}$/.test(String(nombre || '')) || typeof clave !== 'string' || clave.length < 20) return false;
+  if (!/^[a-z0-9]{3,20}$/.test(String(nombre || '')) || typeof clave !== 'string' || clave.length < 20) return false;
   const guardado = props().getProperty('SRV_' + nombre);
   return !!guardado && guardado === sha256Hex(clave);
 }
@@ -852,6 +853,9 @@ function crearClaveServicio_(nombre) {
 // Ejecutar desde el editor (Ejecutar ▸ crearClaveServicioProduccion).
 // Si la ejecutas de nuevo, la clave anterior deja de servir (útil si se filtró).
 function crearClaveServicioProduccion() { return crearClaveServicio_('produccion'); }
+// v5.2.0: claves para Gastos y B2B (misma idea: una por app, se pueden renovar).
+function crearClaveServicioGastos() { return crearClaveServicio_('gastos'); }
+function crearClaveServicioB2B() { return crearClaveServicio_('b2b'); }
 
 // ═══════════════════════════════════════════════════════════
 //  INSTALACIÓN — ejecutar UNA vez desde el editor (Ejecutar ▸ instalarSeguridad)

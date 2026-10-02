@@ -1,8 +1,16 @@
-# fën asistencia · v5.1.0 (seguridad + llavero de Fën)
+# fën asistencia · v5.2.0 (seguridad + llavero de Fën)
 
-**App:** v5.0.1 · **Apps Script:** v5.1.0 · 1 de octubre de 2026
+**App:** v5.0.1 · **Apps Script:** v5.2.0 · 2 de octubre de 2026
 
 Es la primera entrega de la Fase 0 de Sistema Fën: cierra las puertas de seguridad de Asistencia sin cambiar cómo trabaja el equipo. La tablet y el panel se ven y se usan igual que antes. Lo único nuevo es que **cada dispositivo se autoriza una vez** con la contraseña del administrador.
+
+## Novedades de v5.2.0 (respecto a v5.1.0)
+
+- Se agregan las funciones `crearClaveServicioGastos` y `crearClaveServicioB2B`, que crean las claves de servicio para que esas apps usen tu misma contraseña de dueño y los PIN.
+- Cada app tiene su propia clave: la de Gastos no sirve para B2B ni para Producción.
+- **Solo cambia `Code.gs`.** Producción sigue funcionando igual y su clave no cambia.
+
+**Instalar:** reemplaza el código por `Code.gs` → **Implementar → Gestionar implementaciones → ✏️ → Nueva versión → Implementar**. Después ejecuta `crearClaveServicioGastos` cuando instales Gastos, y `crearClaveServicioB2B` cuando instales B2B.
 
 ## Novedades de v5.1.0 (respecto a v5.0.1)
 
@@ -107,7 +115,7 @@ Conviene hacerla fuera de horario, porque la tablet y el script deben actualizar
 Corren en un simulador de Apps Script con datos ficticios: sin internet y sin tocar tus planillas.
 
 ```
-node --test pruebas/asistencia/backend.test.js        # 19 pruebas del script
+node --test pruebas/asistencia/backend.test.js        # 20 pruebas del script
 NODE_PATH=$(npm root -g) node --test pruebas/asistencia/e2e.test.js   # 9 pruebas en navegador + capturas
 ```
 
